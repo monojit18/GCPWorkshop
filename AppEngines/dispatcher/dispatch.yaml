@@ -1,0 +1,9 @@
+dispatch:
+- url: "cloud-native-apps-356206.el.r.appspot.com/"
+  service: default
+- url: "cloud-native-apps-356206.el.r.appspot.com/date"
+  service: hello-node-date
+- url: "cloud-native-apps-356206.el.r.appspot.com/time"
+  service: hello-node-time
+- url: "cloud-native-apps-356206.el.r.appspot.com/log_payload"
+  service: hello-node-cloud-task

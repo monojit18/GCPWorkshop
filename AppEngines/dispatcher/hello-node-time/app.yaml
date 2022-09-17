@@ -1,0 +1,3 @@
+runtime: nodejs14
+service: hello-node-time
+service_account: cloud-native-sa@cloud-native-apps-356206.iam.gserviceaccount.com
