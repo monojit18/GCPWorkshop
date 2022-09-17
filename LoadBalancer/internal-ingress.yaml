@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: internal-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce-internal"
+    kubernetes.io/ingress.allow-http: "false"
+    # ingress.gcp.kubernetes.io/pre-shared-cert: "gke-ingress-cert"
+spec:
+  tls:
+  - hosts:
+    - "*.internal.gke.com"
+    secretName: gke-ingress-cert
+  defaultBackend:
+    service:
+      name: nginx-svc
+      port:
+        number: 80
+  rules:
+  - host: "*.internal.gke.com"
+    http:
+      paths:
+      - path: /web
+        pathType: Prefix
+        backend:
+          service:
+            name: web
+            port:
+              number: 8080    

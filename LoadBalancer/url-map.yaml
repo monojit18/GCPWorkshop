@@ -1,0 +1,20 @@
+ kind: compute#urlMap
+ name: cloud-native-map
+ defaultService: regions/asia-southeast1/backendServices/today-service-backend
+ hostRules:
+ - hosts:
+   - '*'
+   pathMatcher: pathmap
+ pathMatchers:
+ - defaultService: regions/asia-southeast1/backendServices/today-service-backend
+   name: pathmap
+   routeRules:
+   - matchRules:
+     - prefixMatch: /cr
+     priority: 1
+     routeAction:
+      weightedBackendServices:
+      - backendService: regions/asia-southeast1/backendServices/today-service-backend
+        weight: 50
+      - backendService: regions/asia-southeast1/backendServices/tomorrow-service-backend
+        weight: 50

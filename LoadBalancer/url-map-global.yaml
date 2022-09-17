@@ -1,0 +1,20 @@
+ kind: compute#urlMap
+ name: cloud-native-map
+ defaultService: global/backendServices/today-service-backend
+ hostRules:
+ - hosts:
+   - '*'
+   pathMatcher: pathmap
+ pathMatchers:
+ - defaultService: global/backendServices/today-service-backend
+   name: pathmap
+   routeRules:
+   - matchRules:
+     - prefixMatch: /cr
+     priority: 1
+     routeAction:
+      weightedBackendServices:
+      - backendService: global/backendServices/today-service-backend
+        weight: 50
+      - backendService: global/backendServices/tomorrow-service-backend
+        weight: 50
