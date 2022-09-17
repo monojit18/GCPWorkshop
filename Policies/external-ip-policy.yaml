@@ -1,0 +1,7 @@
+resource: "organizations/<org-id>"
+policy: {
+  constraint: "constraints/compute.vmExternalIpAccess"
+  listPolicy: {
+  allowedValues: []
+  }
+}

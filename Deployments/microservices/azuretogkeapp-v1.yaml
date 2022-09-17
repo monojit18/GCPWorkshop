@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azuretogkeapp-deploy
+spec:
+  selector:
+    matchLabels:
+      greeting: azuretogkeapp-pod
+      version: v1
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        greeting: azuretogkeapp-pod
+        version: v1
+    spec:
+      containers:
+      - name: azuretogkeapp
+        image: "gkewkshpacr.azurecr.io/azuretogkeapp:v1.0.0"
+        imagePullPolicy: Always      
+        # resources:
+        #   requests:
+        #     cpu: "0.1"
+        #     memory: "128Mi"
+        #   limits:
+        #     cpu: "0.2"
+        #     memory: "156Mi"
+        envFrom:
+        - secretRef:
+            name: logicapp-callback-secret
+      imagePullSecrets:
+      - name: gkewkshpacr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: azuretogkeapp-svc
+spec:
+  type: ClusterIP
+  selector:    
+    version: v1
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
