@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.810.22
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CrossCloudApp", "CrossCloudApp\CrossCloudApp.csproj", "{AF432182-AAD1-48A8-843B-E003853334B5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AF432182-AAD1-48A8-843B-E003853334B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF432182-AAD1-48A8-843B-E003853334B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AF432182-AAD1-48A8-843B-E003853334B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AF432182-AAD1-48A8-843B-E003853334B5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0563A704-A532-4F99-8E92-709783511FDF}
+	EndGlobalSection
+EndGlobal

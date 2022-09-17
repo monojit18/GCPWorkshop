@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqlconnectarcapp-deploy
+  namespace: apis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sqlconnectarcapp-pod  
+  template:
+    metadata:      
+      labels:
+        app: sqlconnectarcapp-pod
+    spec:
+      containers:
+      - image: <acr_name>/sqlconnectarcapp:v1.0.1
+        name: sqlconnectarcapp
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "0.5"
+            memory: 250Mi
+          limits:
+            cpu: "1"
+            memory: 500Mi
+        envFrom:
+        - secretRef:
+            name: sqlconn-secret
+      imagePullSecrets:
+      - name: gkewkshpacr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sqlconnectarcapp-svc
+  namespace: apis
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: sqlconnectarcapp-pod
+  type: ClusterIP

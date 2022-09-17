@@ -1,0 +1,9 @@
+﻿{
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=arcstg;AccountKey=dtWoijV40TN5Lw8ywBmcmtwEh544KLn6gmUvQS9HB/9HMeDhpjt/0n2HNsodLji7OBOMJTqpxmIHepIEkiC+4g==;EndpointSuffix=core.windows.net",
+        "FUNCTIONS_WORKER_RUNTIME": "dotnet",
+        "LOGICAPP_CALLBACK_URL": "",
+        "LOGICAPP_POST_URL": ""
+    }
+}
