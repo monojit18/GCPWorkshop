@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: injector-mesh
+  namespace: istio-control
+data:
+  mesh: |-
+    defaultConfig:
+      discoveryAddress: trafficdirector.googleapis.com:443
+
+      # Envoy proxy port to listen on for the admin interface. Envoy's admin interface
+      # is only accessible at the specified port bound to localhost. This port must be
+      # different from PROXY_STATS_PORT when both are set. Defaults to 15000 when
+      # not set. Port values lower than, or equal to 1024 are not supported.
+      # The following ports are reserved and should NOT be used:
+      #   * 15001
+      #   * 15006
+      proxyAdminPort: 15000
+
+      proxyMetadata:
+        # GCP Project number where Traffic Director resources are configured.
+        # This is a numeric identifier of your project (e.g. "111222333444").
+        # You can get a list of all your projects with their corresponding numbers by
+        # looking it up under "Project info" section of your GCP console or by running
+        # the following command:
+        #
+        # gcloud projects describe $(gcloud config get project) --format='value(projectNumber)'
+        #
+        # If left empty, configuration will be attempted to be fetched for the GCP
+        # project associated with service credentials.
+        # Leaving empty is not recommended as it is not guaranteed to work in future
+        # releases.
+        TRAFFICDIRECTOR_GCP_PROJECT_NUMBER: "cloud-native-project-spoke"
+
+        # The following two fields are incompatible with each other. When one of them is set,
+        # the others must be set to an empty string (i.e. ""):
+        # * TRAFFICDIRECTOR_NETWORK_NAME
+        # * TRAFFICDIRECTOR_MESH_NAME
+
+        # The Google Cloud VPC network name for which the configuration is requested; this is
+        # the VPC network name referenced in the forwarding rules used to configure Traffic Director.
+        #
+        # `TRAFFICDIRECTOR_MESH_NAME` must be empty when this field is set.
+        TRAFFICDIRECTOR_NETWORK_NAME: "default"
+
+        # The name of the service routing Mesh resource for which configuration is requested.
+        # If the Mesh is configured using Kubernetes Gateway API, this field should be set to
+        # "gketd-${MESH_NAME}".
+        #
+        # `TRAFFICDIRECTOR_NETWORK_NAME` must be empty when this field is set.
+        TRAFFICDIRECTOR_MESH_NAME: ""
+
+        # The port at which Envoy's /stats page can be accessed externally (from any source).
+        # This setting is independent of the setting "proxyAdminPort". When both are set,
+        # they must be different. When this port is not set, Envoy's /stats page can only
+        # be accessed from the admin interface by localhost.
+        #
+        # Port values lower than or equaled to 1024 are not supported. The following ports are
+        # reserved and should NOT be used:
+        #   * 15000
+        #   * 15001
+        #   * 15006
+        # PROXY_STATS_PORT: "15020"
+---
