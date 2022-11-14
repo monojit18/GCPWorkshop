@@ -1,5 +1,0 @@
-controller:
-  service:      
-      loadBalancerIP: 12.0.0.100
-      annotations:        
-        cloud.google.com/load-balancer-type: "Internal"        

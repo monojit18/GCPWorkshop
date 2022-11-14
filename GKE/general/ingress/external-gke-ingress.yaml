@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: external-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.allow-http: "true"
+    kubernetes.io/ingress.global-static-ip-name: "gke-glb-pip"        
+spec:
+  tls:
+  - hosts:
+    - "*.<dns-name>"
+    secretName: gke-ingress-cert
+  defaultBackend:
+    service:
+      name: nginxapp-svc
+      port:
+        number: 80
+  rules:
+  - host: "apacheapp.<dns-name>"
+    http:
+      paths:
+      - path: /*
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: apacheapp-svc
+            port:
+              number: 80      
+  - host: "nginxapp.<dns-name>"
+    http:
+      paths:
+      - path: /*
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: nginxapp-svc
+            port:
+              number: 80

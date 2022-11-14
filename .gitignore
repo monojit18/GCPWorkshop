@@ -11,10 +11,12 @@ local.settings.json
 **/bin
 **/obj
 **/certs
+**/node_modules
 **/Misc/commands.txt
 **/Misc/*-sa.json
 **/Misc/jwt-payload.json
-**/node_modules
+
+**/GKE/asm/asmmesh
 
 **/Terraform/**/*.terraform
 **/Terraform/**/*.tfstate*

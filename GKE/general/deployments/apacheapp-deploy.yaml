@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: apacheapp-deploy
+  name: apacheapp-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apacheapp-pod
+  template:
+    metadata:
+      labels:
+        app: apacheapp-pod
+    spec:
+      containers:
+      - image: docker.io/library/httpd:latest
+        name: apacheapp
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apacheapp-svc
+  # annotations:
+  #   cloud.google.com/backend-config: '{"default": "my-backendconfig"}'
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: apacheapp-pod
+  type: ClusterIP

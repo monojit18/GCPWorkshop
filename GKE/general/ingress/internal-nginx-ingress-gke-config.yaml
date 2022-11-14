@@ -1,0 +1,7 @@
+controller:
+  service:
+      type: ClusterIP
+      # loadBalancerIP: 12.0.0.100
+      annotations:
+        # cloud.google.com/load-balancer-type: "Internal"
+        cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "ingress-nginx-80-neg"}}}'

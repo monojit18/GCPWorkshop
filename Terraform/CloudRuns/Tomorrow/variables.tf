@@ -28,7 +28,7 @@ variable "cloudRunInfo"{
     default = {
         name = "tomorrow-cloud-run"
         spec = {
-            image = "asia-southeast1-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0"
+            image = "<repo-name>/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0"
             annotations = "internal-and-cloud-load-balancing"
             traffic = 100            
         }

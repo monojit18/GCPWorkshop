@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gke-nginx-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx    
+    nginx.ingress.kubernetes.io/rewrite-target: /$1      
+spec:
+  rules:
+  - host: "apacheapp.<dns-name>"
+    http:
+      paths:
+      - path: /apache/?(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: apacheapp-svc
+            port:
+              number: 80      
+  - host: "nginxapp.<dns-name>"
+    http:
+      paths:
+      - path: /nginx/?(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: nginxapp-svc
+            port:
+              number: 80

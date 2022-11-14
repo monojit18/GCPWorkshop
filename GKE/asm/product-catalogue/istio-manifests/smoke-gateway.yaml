@@ -1,0 +1,66 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: smoke-gateway
+spec:
+  selector:
+    istio: ingressgateway # use istio default controller
+  servers:
+  # - port:
+  #     number: 80
+  #     name: http
+  #     protocol: HTTP
+  #   hosts:
+  #   - "*"
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: primary-tls-secret
+    hosts:
+    - "*"
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: nginx-virtual-service
+spec:
+  hosts:
+  - "nginxapp.<dns-name>"  
+  gateways:
+  - smoke-gateway
+  http:  
+  - match:  
+    - uri:
+        prefix: /nginx
+    rewrite:
+      uri: /      
+    route:
+    - destination:
+        host: nginxapp-svc
+        port:
+          number: 80
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: apache-virtual-service
+spec:
+  hosts:
+  - "apacheapp.<dns-name>"
+  gateways:
+  - smoke-gateway
+  http:  
+  - match:  
+    - uri:
+        prefix: /apache
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: apacheapp-svc
+        port:
+          number: 80
