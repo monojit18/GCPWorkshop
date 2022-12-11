@@ -216,7 +216,7 @@ gcloud compute firewall-rules create allow-jumper-spoke-internal --network=spoke
 # gcloud compute firewall-rules delete allow-jumper-spoke-internal
 
 
-JUMPSERERIP="35.247.159.19"
+JUMPSERERIP="<IP>"
 
 gcloud container clusters create gke-private-cluster --release-channel=regular \
 --region=asia-southeast1 --num-nodes=1 --enable-ip-alias \
@@ -268,56 +268,142 @@ source ~/.bashrc
 
 gcloud container clusters get-credentials gke-private-cluster --region asia-southeast1 --project=$PROJECT_SPOKE
 
+GKE Private cluster (Appoach 2)
+================================
+PROJECT="$PROJECT_SPOKE"
+REGION="asia-southeast1"
+ZONE="asia-southeast1-b"
+GSA="$GSA_SPOKE"
+
+gcloud auth activate-service-account $GSA \
+--key-file="${BASEFOLDERPATH}/Misc/infrastructure-spoke-sa.json"
+gcloud config set project $PROJECT
+
+gcloud compute networks create spoke-default-vpc --project=$PROJECT --subnet-mode=custom --mtu=1460 \
+--bgp-routing-mode=regional
+#gcloud compute networks delete spoke-default-vpc
+
+gcloud compute firewall-rules create allow-ssh-spoke-default-rule --network spoke-default-vpc --allow tcp:22 --source-ranges=0.0.0.0/0
+#gcloud compute firewall-rules delete allow-ssh-spoke-default-rule
+
+gcloud compute networks subnets create gke-cluster-default-subnet --network=spoke-default-vpc --range=10.0.0.0/22
+#gcloud compute networks subnets delete gke-cluster-default-subnet
+
+gcloud compute networks subnets create gke-proxy-only-default-subnet --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE \
+--network=spoke-default-vpc --range=10.0.4.0/24
+#gcloud compute networks subnets delete gke-proxy-only-default-subnet
+
+gcloud compute networks subnets create gke-psc-default-subnet --purpose=PRIVATE_SERVICE_CONNECT --role=ACTIVE \
+--network=spoke-default-vpc --range=10.0.5.0/24
+# gcloud compute networks subnets delete gke-psc-default-subnet
+
+gcloud compute networks subnets create jumper-server-spoke-default-subnet --network=spoke-default-vpc --range=10.0.7.0/24
+# gcloud compute networks subnets delete jumper-server-spoke-default-subnet
+
+gcloud compute networks subnets update gke-cluster-default-subnet \
+--add-secondary-ranges=pods-range=10.1.0.0/16,services-range=10.2.0.0/16
+# gcloud compute networks subnets delete gke-cluster-default-subnet
+
+gcloud compute firewall-rules create allow-spoke-default-health-check --network=spoke-default-vpc \
+--action=allow --direction=ingress --source-ranges=130.211.0.0/22,35.191.0.0/16 --rules=tcp
+# gcloud compute firewall-rules delete allow-spoke-default-health-check
+
+gcloud compute firewall-rules create allow-spoke-proxies --network=spoke-default-vpc \
+--action=allow --direction=ingress --source-ranges=10.0.4.0/24 --rules=tcp:80,tcp:443,tcp:8080
+# gcloud compute firewall-rules delete allow-spoke-proxies
+
+gcloud compute firewall-rules create allow-spoke-default-internal --network=spoke-default-vpc \
+--action=allow --direction=ingress --source-ranges=10.0.6.0/28 --rules=tcp:80,tcp:443,tcp:8443,tcp:8080
+#gcloud compute firewall-rules delete allow-spoke-default-internal
+
+gcloud compute firewall-rules create allow-jumper-spoke-default-internal --network=spoke-default-vpc \
+--action=allow --direction=ingress --source-ranges=10.0.7.0/24 --rules=tcp:80,tcp:443,tcp:8443,tcp:8080
+#gcloud compute firewall-rules delete allow-jumper-spoke-default-internal
+
+gcloud compute addresses create gke-jump-server-ip --region=$REGION
+JUMPSERER_IP=$(gcloud compute addresses describe gke-jump-server-ip --format="get(address)")
+
+gcloud compute addresses create gke-jump-server-private-ip --subnet=jumper-server-spoke-default-subnet \
+--addresses=10.0.7.100 --region=$REGION
+JUMPSERER_PRIVATE_IP=$(gcloud compute addresses describe gke-jump-server-private-ip --format="get(address)")
+#gcloud compute addresses delete gke-jump-server-private-ip
+
+### Jumper VM
+===============
+gcloud compute instances create jumper-server --image-family=debian-10 --image-project=debian-cloud \
+--network=spoke-default-vpc --subnet=jumper-server-spoke-default-subnet --address=$JUMPSERER_IP \
+--private-network-ip=$JUMPSERER_PRIVATE_IP --zone=$ZONE --project=$PROJECT_SPOKE
+#gcloud compute instances delete jumper-server --zone=asia-southeast1-b --project=$PROJECT_SPOKE
+
+gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].networkIP)" \
+--project=$PROJECT_SPOKE
+gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].accessConfigs[0].natIP)" \
+--project=$PROJECT_SPOKE
+
+gcloud compute ssh --zone asia-southeast1-b jumper-server --project=$PROJECT_HUB
+==========================================================================================
+gcloud container get-server-config --flatten="channels" --filter="channels.channel=REGULAR" \
+    --format="yaml(channels.channel,channels.defaultVersion)"
+
+gcloud container get-server-config --flatten="channels" --filter="channels.channel=REGULAR" \
+    --format="yaml(channels.channel,channels.validVersions)"
+
+gcloud container clusters create gke-private-cluster --release-channel=regular \
+--region=$REGION --num-nodes=1 --enable-ip-alias \
+--enable-master-authorized-networks --network=spoke-default-vpc --subnetwork=gke-cluster-default-subnet \
+--cluster-secondary-range-name=pods-range --services-secondary-range-name=services-range \
+--enable-master-authorized-networks --enable-private-nodes --enable-private-endpoint \
+--service-account=$GSA_SPOKE --workload-pool=$PROJECT.svc.id.goog \
+--master-authorized-networks=$JUMPSERER_PRIVATE_IP/32 --master-ipv4-cidr=10.0.6.0/28
+#gcloud container clusters delete gke-private-cluster --region=$REGION
+
+gcloud compute addresses create asia-southeast1-nat-ip --region=asia-southeast1
+#gcloud compute addresses delete asia-southeast1-nat-ip --region=asia-southeast1
+
+gcloud compute routers create rtr-asia-southeast1 --network=spoke-default-vpc --region=asia-southeast1
+#gcloud compute routers delete rtr-asia-southeast1 --region=asia-southeast1
+
+gcloud compute routers nats create nat-gw-asia-southeast1 --router=rtr-asia-southeast1 --region=asia-southeast1 \
+--nat-external-ip-pool=asia-southeast1-nat-ip --nat-all-subnet-ip-ranges --enable-logging
+#gcloud compute routers nats delete nat-gw-asia-southeast1 --router=rtr-asia-southeast1 --region=asia-southeast1
+================================================================================================================================
+##Access from Jump Server VM
+================================
+gcloud compute ssh --zone asia-southeast1-b jumper-server --project=$PROJECT_SPOKE
+sudo apt-get install snapd
+sudo snap install core
+sudo snap install kubectl --classic
+sudo snap install helm --classic
+sudo apt-get install google-cloud-sdk-gke-gcloud-auth-plugin
+
+gcloud auth list
+gcloud auth activate-service-account $GSA_SPOKE --key-file="./infrastructure-spoke-sa.json"
+gcloud config set compute/region $REGION
+gcloud config set compute/zone $ZONE
+gcloud config set project $PROJECT_SPOKE
+
+gcloud config set account gcpwkshp@gcpwkshpdev.com
+
+gcloud projects add-iam-policy-binding $PROJECT_SPOKE --member="serviceAccount:$GSA_SPOKE" \
+--role="roles/container.admin"
+
+vi ~/.bashrc
+source ~/.bashrc
+
+gcloud container clusters get-credentials gke-private-cluster --region=$REGION --project=$PROJECT
+================================================================================================================================
 
 ### Deploy Applications
 =========================
-k create deployment hello-app --image=gcr.io/google-samples/hello-app:1.0
-k expose deployment hello-app --port=8080 --target-port=8080
-
-k create deploy nginx-deploy --image=nginx
-k expose deploy/nginx-deploy --name nginx-svc --type=ClusterIP --port=80
+k apply -f ./deployments/apacheapp-deploy.yaml
+k apply -f ./deployments/nginxapp-deploy.yaml
 
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 helm install nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
 # helm uninstall nginx-ingress -n nginx-ingress-ns
 
-#### Public LB
-=================
-cat <<EOF > ingress-nginx-public.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: ingress-resource
-  annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/rewrite-target: "/$1"
-spec:
-  rules:
-  - host: "34.87.26.252.nip.io"
-    http:
-      paths:
-      - pathType: Prefix
-        path: /nginx
-        backend:
-          service:
-            name: nginx-svc
-            port:
-              number: 80
-      - pathType: Prefix
-        path: /hello
-        backend:
-          service:
-            name: hello-app
-            port:
-              number: 8080
-EOF
-
-k apply -f ./ingress-nginx-public.yaml
-#k delete -f ./ingress-nginx-public.yaml 
-
-#### Private+Public LB
+## Private+Public LB
 ========================
 cat <<EOF > ingress-config.yaml
 controller:
@@ -328,54 +414,38 @@ controller:
         cloud.google.com/load-balancer-type: "Internal"        
 EOF
 
-#### Private LB
+## Public LB
 =================
-cat <<EOF > internal-ingress-config.yaml
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+#helm install nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
+helm install nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns
+#helm uninstall nginx-ingress -n nginx-ingress-ns
+
+## Private LB
+=====================================================================================
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm install -f ./ingress/internal-nginx-ingress-gke-config.yaml nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
+===============================================================================================
 controller:
   service:
-      # type: ClusterIP
-      loadBalancerIP: 12.0.0.100
+      type: ClusterIP      
       annotations:        
+        cloud.google.com/neg: '{"exposed_ports": {"443":{"name": "ingress-nginx-443-neg"}}}'
+===============================================================================================
+
+#helm install -f ./ingress/internal-nginx-ingress-config.yaml nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
+====================================================================================================
+controller:
+  service:      
+      loadBalancerIP: 10.0.0.100
+      annotations:
         cloud.google.com/load-balancer-type: "Internal"
-        # cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "ingress-nginx-80-neg"}}}'
-EOF
-
-# helm install -f internal-ingress-config.yaml nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
-helm install -f internal-ingress-config.yaml nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns
-# helm uninstall nginx-ingress -n nginx-ingress-ns
-
-cat <<EOF > ingress-nginx-internal.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: ingress-resource
-  annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/rewrite-target: "/$1"    
-spec:
-  rules:
-  - host: "gkeapps.internal.spoke.com"
-    http:
-      paths:
-      - pathType: Prefix
-        path: /nginx
-        backend:
-          service:
-            name: nginx-svc
-            port:
-              number: 80
-      - pathType: Prefix
-        path: /hello
-        backend:
-          service:
-            name: hello-app
-            port:
-              number: 8080
-EOF
-
-k apply -f ./ingress-nginx-internal.yaml
-#k delete -f ./ingress-nginx-internal.yaml
+====================================================================================================
+#helm uninstall nginx-ingress -n nginx-ingress-ns
 ====================================================================================================
 
 ## Private Cloud DNS Zone
