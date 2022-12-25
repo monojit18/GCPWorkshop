@@ -37,7 +37,7 @@ Following are the steps we would follow as we move on:
 
 - Deploy **Nginx Ingress Controller** as an Internal Load Balancer onto the GKE cluster. This creates a **Regional TCP/UDP Load Balancer (Layer 4)** in GCP with a Private IP address.
 
-  > [!NOTE]
+  > __NOTE__
   >
   > This can be GKE Native Ingress controller also. GKE Ingress currently does not support all Nginx specific Annotations and features; e.g. Reqrite rules etc. Hence this document relies on Nginx only.
 
@@ -245,7 +245,7 @@ Let us prepare the environment first even before creating the GKE cluster
   --zone=$PROJECT_NAME-zone
   ```
 
-  > [!NOTE]
+  > __NOTE__
   >
   > - The Private IP of the Internal LB is **10.0.0.100** in this case
   >
@@ -479,7 +479,7 @@ Let us prepare the environment first even before creating the GKE cluster
 
     ![apigee-nginx](./Assets/apigee-nginx.png)
 
-    > [!NOTE]
+    > __NOTE__
     >
     > - The **Target Endpoint** should point to the internal DNS name for each service; viz. *apacheapp.internal.spoke.com* or *nginxapp.internal.spoke.com*
     >
@@ -505,7 +505,7 @@ Let us prepare the environment first even before creating the GKE cluster
     curl -i -k -H "Host: $ENV_GROUP_HOSTNAME" https://$INTERNAL_LOAD_BALANCER_IP/nginx
     ```
 
-    > [!NOTE]
+    > __NOTE__
     >
     > - This document does SSL OffLoading at the Apigee X. [Refer](https://cloud.google.com/apigee/docs/api-platform/system-administration/options-configuring-tls)
 
