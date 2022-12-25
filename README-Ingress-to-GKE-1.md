@@ -307,7 +307,7 @@ Let us prepare the environment first even before creating the GKE cluster
   metadata:
     labels:
       app: apacheapp-deploy
-    name: apacheapp-deploy
+      name: apacheapp-deploy
   spec:
     replicas: 1
     selector:
@@ -318,7 +318,7 @@ Let us prepare the environment first even before creating the GKE cluster
       metadata:
         labels:
           app: apacheapp-pod
-  				version: "1.0"
+          version: "1.0"
       spec:
         containers:
         - name: apacheapp 
@@ -344,7 +344,7 @@ Let us prepare the environment first even before creating the GKE cluster
       targetPort: 80
     selector:
       app: apacheapp-pod
-  		version: "1.0"
+      version: "1.0"
     type: ClusterIP
   
   ```
