@@ -14,7 +14,7 @@ gcloud resource-manager folders create --display-name=services --organization=
 gcloud resource-manager folders list --organization=
 
 ====================================================================================================
-BASEFOLDERPATH="/Users/monojitd/Workloads/Development/Projects/GithubProjects/Workshops/GCPWorkshop"
+BASEFOLDERPATH=""
 PROJECT_HUB="cloud-native-hub"
 GSA_HUB="infrastructure-hub-sa@${PROJECT_HUB}.iam.gserviceaccount.com"
 
