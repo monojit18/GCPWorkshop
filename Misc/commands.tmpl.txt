@@ -1,3 +1,6 @@
+====================================================================================================
+New Approach
+====================================================================================================
 # Organizations
 =====================
 gcloud organizations list
@@ -11,7 +14,7 @@ gcloud resource-manager folders create --display-name=services --organization=
 gcloud resource-manager folders list --organization=
 
 ====================================================================================================
-BASEFOLDERPATH=""
+BASEFOLDERPATH="/Users/monojitd/Workloads/Development/Projects/GithubProjects/Workshops/GCPWorkshop"
 PROJECT_HUB="cloud-native-hub"
 GSA_HUB="infrastructure-hub-sa@${PROJECT_HUB}.iam.gserviceaccount.com"
 
@@ -23,39 +26,42 @@ GSA_APPS="services-apps-sa@${PROJECT_APPS}.iam.gserviceaccount.com"
 
 PROJECT_DBS="cloud-native-services-dbs"
 GSA_DBS="services-dbs-sa@${PROJECT_DBS}.iam.gserviceaccount.com"
+
+REGION="asia-southeast1"
+ZONE="asia-southeast1-b"
 ====================================================================================================
 
 # Projects
 =====================
 gcloud config get project
 
-gcloud projects create $PROJECT_HUB --folder=189846185861
+gcloud projects create $PROJECT_HUB --folder=
 gcloud config set project $PROJECT_HUB
-gcloud beta billing projects link $PROJECT_HUB --billing-account=01302F-65D22E-71B30F
+gcloud beta billing projects link $PROJECT_HUB --billing-account=
 gcloud services enable compute.googleapis.com
-gcloud config set compute/region asia-southeast1
-gcloud config set compute/zone asia-southeast1-b
+gcloud config set compute/region $REGION
+gcloud config set compute/zone $ZONE
 
-gcloud projects create $PROJECT_SPOKE --folder=189846185861
+gcloud projects create $PROJECT_SPOKE --folder=
 gcloud config set project $PROJECT_SPOKE
-gcloud beta billing projects link $PROJECT_SPOKE --billing-account=01302F-65D22E-71B30F
+gcloud beta billing projects link $PROJECT_SPOKE --billing-account=
 gcloud services enable compute.googleapis.com
-gcloud config set compute/region asia-southeast1
-gcloud config set compute/zone asia-southeast1-b
+gcloud config set compute/region $REGION
+gcloud config set compute/zone $ZONE
 
-gcloud projects create $PROJECT_APPS --folder=502234707135
+gcloud projects create $PROJECT_APPS --folder=
 gcloud config set project $PROJECT_APPS
-gcloud beta billing projects link $PROJECT_APPS --billing-account=01302F-65D22E-71B30F
+gcloud beta billing projects link $PROJECT_APPS --billing-account=
 gcloud services enable compute.googleapis.com
-gcloud config set compute/region asia-southeast1
-gcloud config set compute/zone asia-southeast1-b
+gcloud config set compute/region $REGION
+gcloud config set compute/zone $ZONE
 
-gcloud projects create $PROJECT_DBS --folder=502234707135
+gcloud projects create $PROJECT_DBS --folder=
 gcloud config set project $PROJECT_DBS
-gcloud beta billing projects link $PROJECT_DBS --billing-account=01302F-65D22E-71B30F
+gcloud beta billing projects link $PROJECT_DBS --billing-account=
 gcloud services enable compute.googleapis.com
-gcloud config set compute/region asia-southeast1
-gcloud config set compute/zone asia-southeast1-b
+gcloud config set compute/region $REGION
+gcloud config set compute/zone $ZONE
 
 # Service Accounts
 =========================
@@ -111,139 +117,167 @@ gcloud projects add-iam-policy-binding $PROJECT_DBS --role="roles/owner" \
 
 ====================================================================================================
 
-# GKE Setup
+# GKE Private Cluster
 ====================================================================================================
 ## Hub Resources
 =========================
 PROJECT="$PROJECT_HUB"
-REGION="asia-southeast1"
 GSA="$GSA_HUB"
+HUB_VPC_NAME="hub-vpc"
+HUB_SUBNET_NAME="jump-server-subnet"
 
 gcloud auth activate-service-account $GSA \
 --key-file="${BASEFOLDERPATH}/Misc/infrastructure-hub-sa.json"
 gcloud config set project $PROJECT
 
-gcloud compute networks create hub-vpc --project=$PROJECT --subnet-mode=custom --mtu=1460 \
+gcloud compute networks create $HUB_VPC_NAME --project=$PROJECT --subnet-mode=custom --mtu=1460 \
 --bgp-routing-mode=regional
-# gcloud compute networks delete hub-vpc
+# gcloud compute networks delete $HUB_VPC_NAME
 
-gcloud compute firewall-rules create allow-ssh-rule --network hub-vpc --allow tcp:22 --source-ranges=0.0.0.0/0
+gcloud compute firewall-rules create allow-ssh-rule --network $HUB_VPC_NAME --allow tcp:22 --source-ranges=0.0.0.0/0
 # gcloud compute firewall-rules delete allow-ssh-rule
 
-gcloud compute networks subnets create jump-server-subnet --network=hub-vpc --range=11.0.0.0/24
-# gcloud compute networks subnets delete jump-server-subnet
+gcloud compute networks subnets create $HUB_SUBNET_NAME --network=$HUB_VPC_NAME --range=11.0.0.0/24
+# gcloud compute networks subnets delete $HUB_SUBNET_NAME
 
 ### Jumper VM
 ===============
 gcloud compute instances create jumper-server --image-family=debian-10 --image-project=debian-cloud \
---network=hub-vpc --subnet=jump-server-subnet --zone=asia-southeast1-b --project=$PROJECT_HUB
-# gcloud compute instances delete jumper-server --zone=asia-southeast1-b --project=$PROJECT_HUB
+--network=$HUB_VPC_NAME --subnet=$HUB_SUBNET_NAME --zone=$ZONE --project=$PROJECT_HUB
+# gcloud compute instances delete jumper-server --zone=$ZONE --project=$PROJECT_HUB
 
 gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].networkIP)" \
 --project=$PROJECT_HUB
 gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].accessConfigs[0].natIP)" \
 --project=$PROJECT_HUB
 
-gcloud compute ssh --zone asia-southeast1-b jumper-server --project=$PROJECT_HUB
+gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_HUB
 
 ### Hub-n-Spoke Peering
 ==============================
+SPOKE_VPC_NAME="$SPOKE_VPC_NAME"
+
 gcloud auth activate-service-account $GSA_HUB \
 --key-file="${BASEFOLDERPATH}/Misc/infrastructure-hub-sa.json"
 gcloud config set project $PROJECT_HUB
 
-gcloud compute networks peerings create hub-spoke-peer --network=hub-vpc --peer-network=spoke-vpc \
+gcloud compute networks peerings create hub-spoke-peer --network=$HUB_VPC_NAME --peer-network=$SPOKE_VPC_NAME \
 --peer-project=$PROJECT_SPOKE --import-subnet-routes-with-public-ip
-# gcloud compute networks peerings delete hub-spoke-peer --network=hub-vpc
+# gcloud compute networks peerings delete hub-spoke-peer --network=$HUB_VPC_NAME
 
 gcloud auth activate-service-account $GSA_SPOKE \
 --key-file="${BASEFOLDERPATH}/Misc/infrastructure-spoke-sa.json"
 gcloud config set project $PROJECT_SPOKE
 
-gcloud compute networks peerings create spoke-hub-peer --network=spoke-vpc \
---peer-network=hub-vpc --peer-project=$PROJECT_HUB --import-subnet-routes-with-public-ip
-# gcloud compute networks peerings delete hub-spoke-peer --network=hub-vpc
+gcloud compute networks peerings create spoke-hub-peer --network=$SPOKE_VPC_NAME \
+--peer-network=$HUB_VPC_NAME --peer-project=$PROJECT_HUB --import-subnet-routes-with-public-ip
+# gcloud compute networks peerings delete hub-spoke-peer --network=$HUB_VPC_NAME
 
 ## Spoke Resources
 =========================
 PROJECT="$PROJECT_SPOKE"
-REGION="asia-southeast1"
 GSA="$GSA_SPOKE"
+SPOKE_VPC_NAME="spoke-vpc"
+CLUSTER_SUBNET_NAME="gke-cluster-subnet"
+PROXY_SUBNET_NAME="gke-proxy-only-subnet"
+PSC_SUBNET_NAME="gke-psc-subnet"
+JUMP_SERVER_SUBNET_NAME="jumper-server-spoke-subnet"
 
 gcloud auth activate-service-account $GSA \
 --key-file="${BASEFOLDERPATH}/Misc/infrastructure-spoke-sa.json"
 gcloud config set project $PROJECT
 
-gcloud compute networks create spoke-vpc --project=$PROJECT --subnet-mode=custom --mtu=1460 \
+gcloud compute networks create $SPOKE_VPC_NAME --project=$PROJECT --subnet-mode=custom --mtu=1460 \
 --bgp-routing-mode=regional
-# gcloud compute networks delete spoke-vpc
+# gcloud compute networks delete $SPOKE_VPC_NAME
 
-gcloud compute firewall-rules create allow-ssh-spoke-rule --network spoke-vpc --allow tcp:22 --source-ranges=0.0.0.0/0
+gcloud compute firewall-rules create allow-ssh-spoke-rule --network $SPOKE_VPC_NAME --allow tcp:22 --source-ranges=0.0.0.0/0
 # gcloud compute firewall-rules delete allow-ssh-spoke-rule
 
-gcloud compute networks subnets create gke-cluster-subnet --network=spoke-vpc --range=12.0.0.0/22
-# gcloud compute networks subnets delete gke-cluster-subnet
+gcloud compute networks subnets create $CLUSTER_SUBNET_NAME --network=$SPOKE_VPC_NAME --range=12.0.0.0/22
+# gcloud compute networks subnets delete $CLUSTER_SUBNET_NAME
 
-gcloud compute networks subnets create gke-proxy-only-subnet --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE \
---network=spoke-vpc --range=12.0.4.0/24
-# gcloud compute networks subnets delete gke-proxy-only-subnet
+gcloud compute networks subnets create $PROXY_SUBNET_NAME --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE \
+--network=$SPOKE_VPC_NAME --range=12.0.4.0/24
+# gcloud compute networks subnets delete $PROXY_SUBNET_NAME
 
-gcloud compute networks subnets create gke-psc-subnet --purpose=PRIVATE_SERVICE_CONNECT --role=ACTIVE \
---network=spoke-vpc --range=12.0.5.0/24
-# gcloud compute networks subnets delete gke-psc-subnet
+gcloud compute networks subnets create $PSC_SUBNET_NAME --purpose=PRIVATE_SERVICE_CONNECT --role=ACTIVE \
+--network=$SPOKE_VPC_NAME --range=12.0.5.0/24
+# gcloud compute networks subnets delete $PSC_SUBNET_NAME
 
-gcloud compute networks subnets create jumper-server-spoke-subnet --network=spoke-vpc --range=12.0.7.0/24
-# gcloud compute networks subnets delete jumper-server-spoke-subnet
+gcloud compute networks subnets create $JUMP_SERVER_SUBNET_NAME --network=$SPOKE_VPC_NAME --range=12.0.7.0/24
+# gcloud compute networks subnets delete $JUMP_SERVER_SUBNET_NAME
 
-gcloud compute networks subnets update gke-cluster-subnet \
+gcloud compute networks subnets update $CLUSTER_SUBNET_NAME \
 --add-secondary-ranges=pods-range=12.1.0.0/16,services-range=12.2.0.0/16
-# gcloud compute networks subnets delete gke-cluster-subnet
+# gcloud compute networks subnets delete $CLUSTER_SUBNET_NAME
 
-gcloud compute firewall-rules create allow-spoke-health-check --network=spoke-vpc \
+gcloud compute firewall-rules create allow-spoke-health-check --network=$SPOKE_VPC_NAME \
 --action=allow --direction=ingress --source-ranges=130.211.0.0/22,35.191.0.0/16 --rules=tcp
 # gcloud compute firewall-rules delete allow-spoke-health-check
 
-gcloud compute firewall-rules create allow-spoke-proxies --network=spoke-vpc \
+gcloud compute firewall-rules create allow-spoke-proxies --network=$SPOKE_VPC_NAME \
 --action=allow --direction=ingress --source-ranges=12.0.4.0/24 --rules=tcp:80,tcp:443,tcp:8080
 # gcloud compute firewall-rules delete allow-spoke-proxies
 
-gcloud compute firewall-rules create allow-spoke-internal --network=spoke-vpc \
+gcloud compute firewall-rules create allow-spoke-internal --network=$SPOKE_VPC_NAME \
 --action=allow --direction=ingress --source-ranges=12.0.6.0/28 --rules=tcp:80,tcp:443,tcp:8443,tcp:8080
-# gcloud compute firewall-rules delete allow-spoke-internal
+#gcloud compute firewall-rules delete allow-spoke-internal
 
-gcloud compute firewall-rules create allow-jumper-spoke-internal --network=spoke-vpc \
+gcloud compute firewall-rules create allow-jumper-spoke-internal --network=$SPOKE_VPC_NAME \
 --action=allow --direction=ingress --source-ranges=12.0.7.0/24 --rules=tcp:80,tcp:443,tcp:8443,tcp:8080
-# gcloud compute firewall-rules delete allow-jumper-spoke-internal
+#gcloud compute firewall-rules delete allow-jumper-spoke-internal
 
+gcloud compute addresses create gke-jump-server-ip --region=$REGION
+JUMPSERERIP=$(gcloud compute addresses describe gke-jump-server-ip --format="get(address)")
 
-JUMPSERERIP="<IP>"
+gcloud container get-server-config --flatten="channels" --filter="channels.channel=REGULAR" \
+    --format="yaml(channels.channel,channels.defaultVersion)"
 
-gcloud container clusters create gke-private-cluster --release-channel=regular \
---region=asia-southeast1 --num-nodes=1 --enable-ip-alias \
---enable-master-authorized-networks --network=spoke-vpc --subnetwork=gke-cluster-subnet \
+gcloud container get-server-config --flatten="channels" --filter="channels.channel=REGULAR" \
+    --format="yaml(channels.channel,channels.validVersions)"
+
+### Jumper VM
+===============
+gcloud compute instances create jumper-server --image-family=debian-10 --image-project=debian-cloud \
+--network=$SPOKE_VPC_NAME --subnet=$JUMP_SERVER_SUBNET_NAME --zone=$ZONE --project=$PROJECT_SPOKE
+# gcloud compute instances delete jumper-server --zone=$ZONE --project=$PROJECT_SPOKE
+
+gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].networkIP)" \
+--project=$PROJECT_SPOKE
+gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].accessConfigs[0].natIP)" \
+--project=$PROJECT_SPOKE
+
+gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_HUB
+==========================================================================================
+CLUSTER_NAME="gke-private-cluster"
+
+gcloud container clusters create $CLUSTER_NAME --release-channel=regular \
+--region=$REGION --num-nodes=1 --enable-ip-alias \
+--enable-master-authorized-networks --network=$SPOKE_VPC_NAME --subnetwork=$CLUSTER_SUBNET_NAME \
 --cluster-secondary-range-name=pods-range --services-secondary-range-name=services-range \
---enable-master-authorized-networks --enable-private-nodes \
+--enable-master-authorized-networks --enable-private-nodes --enable-private-endpoint \
 --service-account=$GSA_SPOKE \
 --master-authorized-networks=$JUMPSERERIP/32 --master-ipv4-cidr=12.0.6.0/28
-# gcloud container clusters delete gke-private-cluster --region=asia-southeast1
+#gcloud container clusters delete $CLUSTER_NAME --region=$REGION
 
-gcloud compute addresses create asia-southeast1-nat-ip --region=asia-southeast1
-# gcloud compute addresses delete asia-southeast1-nat-ip --region=asia-southeast1
+gcloud compute addresses create $REGION-nat-ip --region=$REGION
+#gcloud compute addresses delete $REGION-nat-ip --region=$REGION
 
-gcloud compute routers create rtr-asia-southeast1 --network=spoke-vpc --region=asia-southeast1
-# gcloud compute routers delete rtr-asia-southeast1 --region=asia-southeast1
+gcloud compute routers create rtr-$REGION --network=$SPOKE_VPC_NAME --region=$REGION
+#gcloud compute routers delete rtr-$REGION --region=$REGION
 
-gcloud compute routers nats create nat-gw-asia-southeast1 --router=rtr-asia-southeast1 --region=asia-southeast1 \
---nat-external-ip-pool=asia-southeast1-nat-ip \
+gcloud compute routers nats create nat-gw-$REGION --router=rtr-$REGION --region=$REGION \
+--nat-external-ip-pool=$REGION-nat-ip \
 --nat-all-subnet-ip-ranges --enable-logging
-# gcloud compute routers nats delete nat-gw-asia-southeast1 --router=rtr-asia-southeast1 --region=asia-southeast1
+#gcloud compute routers nats delete nat-gw-$REGION --router=rtr-$REGION --region=$REGION
 
-## Access from Jump Server VM
+##Access from Jump Server VM
 ================================
-gcloud container clusters update gke-private-cluster --enable-master-authorized-networks \
---master-authorized-networks=$JUMPSERERIP/32 --region=asia-southeast1
+gcloud container clusters update $CLUSTER_NAME --enable-master-authorized-networks \
+--master-authorized-networks=$JUMPSERERIP/32 --region=$REGION
 
-gcloud compute ssh --zone asia-southeast1-b jumper-server --project=$PROJECT_HUB
+gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_HUB
 sudo apt-get install snapd
 sudo snap install core
 sudo snap install kubectl --classic
@@ -255,7 +289,7 @@ gcloud auth activate-service-account $GSA_HUB \
 --key-file="./infrastructure-hub-sa.json"
 gcloud config set project $PROJECT_HUB
 
-gcloud config set account gcpwkshp@<dns-name>
+gcloud config set account <account-name>@<dns-name>.com
 
 gcloud projects add-iam-policy-binding $PROJECT_SPOKE \
 --member="serviceAccount:$GSA_HUB" \
@@ -266,13 +300,11 @@ gcloud config set account $GSA_HUB
 vi ~/.bashrc
 source ~/.bashrc
 
-gcloud container clusters get-credentials gke-private-cluster --region asia-southeast1 --project=$PROJECT_SPOKE
+gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION --project=$PROJECT_SPOKE
 
-GKE Private cluster (Appoach 2)
+GKE Private cluster (Approach 2)
 ================================
 PROJECT="$PROJECT_SPOKE"
-REGION="asia-southeast1"
-ZONE="asia-southeast1-b"
 GSA="$GSA_SPOKE"
 
 gcloud auth activate-service-account $GSA \
@@ -333,14 +365,14 @@ JUMPSERER_PRIVATE_IP=$(gcloud compute addresses describe gke-jump-server-private
 gcloud compute instances create jumper-server --image-family=debian-10 --image-project=debian-cloud \
 --network=spoke-default-vpc --subnet=jumper-server-spoke-default-subnet --address=$JUMPSERER_IP \
 --private-network-ip=$JUMPSERER_PRIVATE_IP --zone=$ZONE --project=$PROJECT_SPOKE
-#gcloud compute instances delete jumper-server --zone=asia-southeast1-b --project=$PROJECT_SPOKE
+#gcloud compute instances delete jumper-server --zone=$ZONE --project=$PROJECT_SPOKE
 
 gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].networkIP)" \
 --project=$PROJECT_SPOKE
 gcloud compute instances describe jumper-server --format="get(networkInterfaces[0].accessConfigs[0].natIP)" \
 --project=$PROJECT_SPOKE
 
-gcloud compute ssh --zone asia-southeast1-b jumper-server --project=$PROJECT_HUB
+gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_HUB
 ==========================================================================================
 gcloud container get-server-config --flatten="channels" --filter="channels.channel=REGULAR" \
     --format="yaml(channels.channel,channels.defaultVersion)"
@@ -348,28 +380,28 @@ gcloud container get-server-config --flatten="channels" --filter="channels.chann
 gcloud container get-server-config --flatten="channels" --filter="channels.channel=REGULAR" \
     --format="yaml(channels.channel,channels.validVersions)"
 
-gcloud container clusters create gke-private-cluster --release-channel=regular \
+gcloud container clusters create $CLUSTER_NAME --release-channel=regular \
 --region=$REGION --num-nodes=1 --enable-ip-alias \
 --enable-master-authorized-networks --network=spoke-default-vpc --subnetwork=gke-cluster-default-subnet \
 --cluster-secondary-range-name=pods-range --services-secondary-range-name=services-range \
 --enable-master-authorized-networks --enable-private-nodes --enable-private-endpoint \
 --service-account=$GSA_SPOKE --workload-pool=$PROJECT.svc.id.goog \
 --master-authorized-networks=$JUMPSERER_PRIVATE_IP/32 --master-ipv4-cidr=10.0.6.0/28
-#gcloud container clusters delete gke-private-cluster --region=$REGION
+#gcloud container clusters delete $CLUSTER_NAME --region=$REGION
 
-gcloud compute addresses create asia-southeast1-nat-ip --region=asia-southeast1
-#gcloud compute addresses delete asia-southeast1-nat-ip --region=asia-southeast1
+gcloud compute addresses create $REGION-nat-ip --region=$REGION
+#gcloud compute addresses delete $REGION-nat-ip --region=$REGION
 
-gcloud compute routers create rtr-asia-southeast1 --network=spoke-default-vpc --region=asia-southeast1
-#gcloud compute routers delete rtr-asia-southeast1 --region=asia-southeast1
+gcloud compute routers create rtr-$REGION --network=spoke-default-vpc --region=$REGION
+#gcloud compute routers delete rtr-$REGION --region=$REGION
 
-gcloud compute routers nats create nat-gw-asia-southeast1 --router=rtr-asia-southeast1 --region=asia-southeast1 \
---nat-external-ip-pool=asia-southeast1-nat-ip --nat-all-subnet-ip-ranges --enable-logging
-#gcloud compute routers nats delete nat-gw-asia-southeast1 --router=rtr-asia-southeast1 --region=asia-southeast1
+gcloud compute routers nats create nat-gw-$REGION --router=rtr-$REGION --region=$REGION \
+--nat-external-ip-pool=$REGION-nat-ip --nat-all-subnet-ip-ranges --enable-logging
+#gcloud compute routers nats delete nat-gw-$REGION --router=rtr-$REGION --region=$REGION
 ================================================================================================================================
 ##Access from Jump Server VM
 ================================
-gcloud compute ssh --zone asia-southeast1-b jumper-server --project=$PROJECT_SPOKE
+gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_SPOKE
 sudo apt-get install snapd
 sudo snap install core
 sudo snap install kubectl --classic
@@ -382,7 +414,7 @@ gcloud config set compute/region $REGION
 gcloud config set compute/zone $ZONE
 gcloud config set project $PROJECT_SPOKE
 
-gcloud config set account gcpwkshp@gcpwkshpdev.com
+gcloud config set account <account-name>@<dns-name>.com
 
 gcloud projects add-iam-policy-binding $PROJECT_SPOKE --member="serviceAccount:$GSA_SPOKE" \
 --role="roles/container.admin"
@@ -390,7 +422,7 @@ gcloud projects add-iam-policy-binding $PROJECT_SPOKE --member="serviceAccount:$
 vi ~/.bashrc
 source ~/.bashrc
 
-gcloud container clusters get-credentials gke-private-cluster --region=$REGION --project=$PROJECT
+gcloud container clusters get-credentials $CLUSTER_NAME --region=$REGION --project=$PROJECT
 ================================================================================================================================
 
 ### Deploy Applications
@@ -402,17 +434,6 @@ helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 helm install nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
 # helm uninstall nginx-ingress -n nginx-ingress-ns
-
-## Private+Public LB
-========================
-cat <<EOF > ingress-config.yaml
-controller:
-  service:
-    internal:
-      enabled: true
-      annotations:        
-        cloud.google.com/load-balancer-type: "Internal"        
-EOF
 
 ## Public LB
 =================
@@ -450,7 +471,7 @@ controller:
 
 ## Private Cloud DNS Zone
 ==========================
-gcloud dns managed-zones create $PROJECT_SPOKE-zone --dns-name internal.spoke.com. --visibility=private --networks=spoke-vpc \
+gcloud dns managed-zones create $PROJECT_SPOKE-zone --dns-name internal.spoke.com. --visibility=private --networks=$SPOKE_VPC_NAME \
 --description="Private Zone"
 # gcloud dns managed-zones delete $PROJECT_SPOKE-zone
 
@@ -469,12 +490,12 @@ gcloud projects add-iam-policy-binding $PROJECT_SPOKE \
 gcloud dns managed-zones create hub-spoke-dns-peer \
   --description="DNS Peering Hub to Spoke" \
   --dns-name=internal.hub.com \
-  --networks=hub-vpc \
+  --networks=$HUB_VPC_NAME \
   --account=$GSA_HUB \
-  --target-network=spoke-vpc \
+  --target-network=$SPOKE_VPC_NAME \
   --target-project=$PROJECT_SPOKE \
   --visibility=private
-# gcloud dns managed-zones delete hub-spoke-dns-peer --networks=hub-vpc
+# gcloud dns managed-zones delete hub-spoke-dns-peer --networks=$HUB_VPC_NAME
 
 ====================================================================================================
 
@@ -493,8 +514,8 @@ gcloud dns managed-zones create hub-spoke-dns-peer \
 
 openssl x509 -in fullchain.pem -text -noout
 gcloud compute ssl-certificates create cloud-lb-cert --certificate=fullchain.pem --private-key=privkey.pem
-gcloud compute ssl-certificates create cloud-lb-cert --certificate=fullchain.pem --private-key=privkey.pem --region=asia-southeast1
-# gcloud compute ssl-certificates delete --region=asia-southeast1
+gcloud compute ssl-certificates create cloud-lb-cert --certificate=fullchain.pem --private-key=privkey.pem --region=$REGION
+# gcloud compute ssl-certificates delete --region=$REGION
 
 Apigee X
 ===============
@@ -503,18 +524,18 @@ gcloud auth activate-service-account --key-file="./infrastructure-spoke-sa.json"
 
 AUTH="Authorization: Bearer $(gcloud auth print-access-token)"
 PROJECT_ID="$PROJECT_SPOKE"
-RUNTIME_LOCATION="asia-southeast1"
-ANALYTICS_REGION="asia-southeast1"
+RUNTIME_LOCATION="$REGION"
+ANALYTICS_REGION="$REGION"
 
 echo $AUTH
 echo $PROJECT_ID
 echo $RUNTIME_LOCATION
 echo $ANALYTICS_REGION
 
-gcloud compute networks subnets create gke-apigee-subnet --network=spoke-vpc --range=12.0.8.0/22
+gcloud compute networks subnets create gke-apigee-subnet --network=$SPOKE_VPC_NAME --range=12.0.8.0/22
 # gcloud compute networks subnets delete gke-apigee-subnet
 
-gcloud compute networks subnets create gke-apigee-troublesdhoot-subnet --network=spoke-vpc --range=12.0.12.0/28
+gcloud compute networks subnets create gke-apigee-troublesdhoot-subnet --network=$SPOKE_VPC_NAME --range=12.0.12.0/28
 # gcloud compute networks subnets delete gke-apigee-troublesdhoot-subnet
 
 gcloud services enable apigee.googleapis.com \
@@ -522,7 +543,7 @@ servicenetworking.googleapis.com compute.googleapis.com cloudkms.googleapis.com 
 
 APIGEE_RANGE_NAME=apigeex-svcs
 APIGEE_MANAGED_RANGE_NAME=apigeex-managed-svcs
-NETWORK_NAME=spoke-vpc
+NETWORK_NAME=$SPOKE_VPC_NAME
 
 gcloud compute addresses create $APIGEE_RANGE_NAME \
   --global \
@@ -547,16 +568,16 @@ gcloud alpha apigee organizations provision \
   --authorized-network=$NETWORK_NAME --project=$PROJECT_ID
 # gcloud alpha apigee organizations delete $PROJECT_SPOKE
 
-gcloud services peered-dns-domains create gke-internal-dns --network=spoke-vpc --service="servicenetworking.googleapis.com" \
+gcloud services peered-dns-domains create gke-internal-dns --network=$SPOKE_VPC_NAME --service="servicenetworking.googleapis.com" \
 --dns-suffix=internal.spoke.com.
 
 Access from Jumper VM in Spoke
 ================================
 gcloud compute instances create gke-jumper-client --image-family=debian-10 --image-project=debian-cloud --tags=allow-ssh \
---network=spoke-vpc --subnet=gke-cluster-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete gke-jumper-client --zone=asia-southeast1-b
+--network=$SPOKE_VPC_NAME --subnet=$CLUSTER_SUBNET_NAME --zone=$ZONE
+# gcloud compute instances delete gke-jumper-client --zone=$ZONE
 
-gcloud compute ssh --zone asia-southeast1-b gke-jumper-client --project=$PROJECT_SPOKE
+gcloud compute ssh --zone $ZONE gke-jumper-client --project=$PROJECT_SPOKE
 
 gcloud auth activate-service-account --key-file="./infrastructure-spoke-sa.json"
 
@@ -579,11 +600,11 @@ curl -i -k -H "Host: $ENV_GROUP_HOSTNAME" https://$INTERNAL_LOAD_BALANCER_IP/hel
 Global Https LB to Apigee (External Routing)
 ==============================================
 NEG_NAME="apigee-lb-neg"
-TARGET_SERVICE="projects/nc79b28590d2f500bp-tp/regions/asia-southeast1/serviceAttachments/apigee-asia-southeast1-mfby"
-RUNTIME_LOCATION="asia-southeast1"
-ANALYTICS_REGION="asia-southeast1"
-NETWORK_NAME="spoke-vpc"
-SUBNET_NAME="gke-psc-subnet"
+TARGET_SERVICE="projects/nc79b28590d2f500bp-tp/regions/$REGION/serviceAttachments/apigee-$REGION-mfby"
+RUNTIME_LOCATION="$REGION"
+ANALYTICS_REGION="$REGION"
+NETWORK_NAME="$SPOKE_VPC_NAME"
+SUBNET_NAME="$PSC_SUBNET_NAME"
 PROJECT_ID="$PROJECT_SPOKE"
 ADDRESS_NAME="apigee-lb-address"
 BACKEND_SERVICE_NAME="apigee-bkend-service"
@@ -645,7 +666,7 @@ curl "https://apigee.googleapis.com/v1/organizations/$PROJECT_ID/envgroups/eval-
   -X PATCH \
   -H "Content-Type:application/json" \
   -d '{
-    "hostnames":["'apigext.<dns-name>'"]
+    "hostnames":["'apigext.<dns-name>.com'"]
   }'
 
 curl -H "$AUTH" \
@@ -654,7 +675,7 @@ curl -H "$AUTH" \
 curl -i -H "$AUTH" \
   "https://apigee.googleapis.com/v1/organizations/$PROJECT_ID/environments/eval/apis/nginx-app/revisions/4/deployments"
 
-curl -i -k https://gke-external.<dns-name>/hello-world
+curl -i -k https://gke-external.<dns-name>.com/hello-world
 
 ==================================================================================================
 
@@ -670,7 +691,7 @@ curl -i -k https://gke-external.<dns-name>/hello-world
   # gcloud beta compute backend-services delete gke-glb-backend --global
 
   gcloud beta compute backend-services add-backend gke-glb-backend \
-    --network-endpoint-group=ingress-nginx-80-neg --network-endpoint-group-zone=asia-southeast1-c \
+    --network-endpoint-group=ingress-nginx-80-neg --network-endpoint-group-zone=$REGION-c \
     --balancing-mode=RATE --capacity-scaler=1.0 --max-rate-per-endpoint=1.0 --global
 
   gcloud beta compute url-maps create gke-glb-map --default-service=gke-glb-backend --global
@@ -700,10 +721,10 @@ curl -i -k https://gke-external.<dns-name>/hello-world
 
 GKE Public Cluster
 ====================================================================================================
-#gcloud compute instances delete jumper-server --zone=asia-southeast1-b --project=$PROJECT_HUB
+#gcloud compute instances delete jumper-server --zone=$ZONE --project=$PROJECT_HUB
 PROJECT="$PROJECT_SPOKE"
 GKEFOLDERPATH="$BASEFOLDERPATH/GKE"
-REGION="asia-southeast1"
+REGION="$REGION"
 CLUSTER="gke-public-cluster"
 GSA="$GSA_SPOKE"
 
@@ -712,12 +733,12 @@ gcloud services enable container.googleapis.com --project=$PROJECT
 gcloud container clusters create $CLUSTER --release-channel=regular --region=$REGION \
 --enable-ip-alias --enable-autoscaling \
 --num-nodes=1 --min-nodes=1 --max-nodes=3 --max-pods-per-node=40 \
---network=spoke-vpc --subnetwork=gke-cluster-subnet \
+--network=$SPOKE_VPC_NAME --subnetwork=$CLUSTER_SUBNET_NAME \
 --cluster-secondary-range-name=pods-range --services-secondary-range-name=services-range \
 --service-account=$GSA --workload-pool=$PROJECT.svc.id.goog
 #gcloud container clusters delete $CLUSTER --region=$REGION
 
-gcloud container clusters update $CLUSTER --region=$REGION --workload-pool=$PROJECT.svc.id.goog
+#gcloud container clusters update $CLUSTER --region=$REGION --workload-pool=$PROJECT.svc.id.goog
 
 gcloud container node-pools create gkeappspool --cluster=$CLUSTER \
 --region=$REGION --num-nodes=1 --enable-autoscaling \
@@ -749,11 +770,10 @@ Jump Server (Spoke)
 ============================
 INTERNAL_LB_IP="12.0.0.100"
 PROXY_VM=gke-nginx-proxy
-ZONE="asia-southeast1-b"
 
 gcloud compute instances create-with-container $PROXY_VM \
    --zone=$ZONE \
-   --network=spoke-vpc --subnet=jumper-server-spoke-subnet \
+   --network=$SPOKE_VPC_NAME --subnet=$JUMP_SERVER_SUBNET_NAME \
    --container-image gcr.io/cloud-marketplace/google/nginx:latest \
    --container-mount-host-path=host-path=/tmp/server.conf,mount-path=/etc/nginx/conf.d/default.conf \
    --metadata=startup-script="#! /bin/bash
@@ -777,37 +797,37 @@ gcloud compute ssh --zone $ZONE $PROXY_VM -- -L 8089:localhost:8080
 go install github.com/google/go-containerregistry/cmd/gcrane@latest
 
 gcrane cp gcr.io/google-samples/microservices-demo/adservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/adservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/adservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/cartservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/cartservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/cartservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/checkoutservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/checkoutservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/checkoutservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/currencyservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/currencyservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/currencyservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/emailservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/emailservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/emailservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/frontend:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/frontend:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/frontend:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/loadgenerator:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/loadgenerator:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/loadgenerator:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/paymentservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/paymentservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/paymentservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/productcatalogservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/productcatalogservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/productcatalogservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/recommendationservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/recommendationservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/recommendationservice:v0.3.6
 
 gcrane cp gcr.io/google-samples/microservices-demo/shippingservice:v0.3.6 \
-<repo-name>/$PROJECT_SPOKE/cloud-native-repo/shippingservice:v0.3.6
+$REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/shippingservice:v0.3.6
 
 k apply -f ./namespaces/
 #k delete -f ./namespaces/
@@ -830,26 +850,26 @@ k apply -f ./general/ingress/helloworld-app-v2-ingress.yaml
 gcloud compute network-endpoint-groups list
 SSL Secrets
 ============
-k create secret tls gke-ingress-cert --cert="./Misc/Certs/<dns-name>/fullchain.pem" \
---key="./Misc/Certs/<dns-name>/privkey.pem"
+k create secret tls gke-ingress-cert --cert="./Misc/Certs/<dns-name>.com/fullchain.pem" \
+--key="./Misc/Certs/<dns-name>.com/privkey.pem"
 
 Regional Http LB to GKE (through Private Service Connect)
 =======================================================================
 gcloud compute forwarding-rules list
 
-gcloud compute service-attachments create gke-ingress-attachment --region=asia-southeast1 \
+gcloud compute service-attachments create gke-ingress-attachment --region=$REGION \
 --producer-forwarding-rule=a487a9f46f4c74ba28bb366f60911f20 --connection-preference=ACCEPT_AUTOMATIC \
---nat-subnets=gke-psc-subnet
+--nat-subnets=$PSC_SUBNET_NAME
 #gcloud compute service-attachments delete gke-ingress-attachment
 
 gcloud compute network-endpoint-groups create gke-glb-neg \
   --network-endpoint-type=private-service-connect \
-  --psc-target-service=$(gcloud compute service-attachments describe gke-ingress-attachment --region=asia-southeast1 \
+  --psc-target-service=$(gcloud compute service-attachments describe gke-ingress-attachment --region=$REGION \
   --format="get(selfLink)") \
-   --network=spoke-vpc \
-  --subnet=gke-psc-subnet \
-  --region=asia-southeast1
-#gcloud compute network-endpoint-groups delete gke-glb-neg --region=asia-southeast1
+   --network=$SPOKE_VPC_NAME \
+  --subnet=$PSC_SUBNET_NAME \
+  --region=$REGION
+#gcloud compute network-endpoint-groups delete gke-glb-neg --region=$REGION
 ====================================================================================================
 
 Global Https LB to Nginx Ingress (through Private Service Connect)
@@ -858,19 +878,19 @@ Global Https LB to Nginx Ingress (through Private Service Connect)
 INGRESS_SERVICE_ATTACHMENT="nginx-ingress-attachment"
 #INGRESS_SERVICE_ATTACHMENT="gke-ingress-attachment"
 
-gcloud compute service-attachments create $INGRESS_SERVICE_ATTACHMENT --region=asia-southeast1 \
+gcloud compute service-attachments create $INGRESS_SERVICE_ATTACHMENT --region=$REGION \
 --producer-forwarding-rule=a4787838a217547bd887b44a20088d4e --connection-preference=ACCEPT_AUTOMATIC \
---nat-subnets=gke-psc-subnet
+--nat-subnets=$PSC_SUBNET_NAME
 #gcloud compute service-attachments delete $INGRESS_SERVICE_ATTACHMENT
 
 gcloud compute network-endpoint-groups create gke-glb-neg \
   --network-endpoint-type=private-service-connect \
-  --psc-target-service=$(gcloud compute service-attachments describe ${INGRESS_SERVICE_ATTACHMENT} --region=asia-southeast1 \
+  --psc-target-service=$(gcloud compute service-attachments describe ${INGRESS_SERVICE_ATTACHMENT} --region=$REGION \
   --format="get(selfLink)") \
-   --network=spoke-vpc \
-  --subnet=gke-psc-subnet \
-  --region=asia-southeast1
-#gcloud compute network-endpoint-groups delete gke-glb-neg --region=asia-southeast1
+   --network=$SPOKE_VPC_NAME \
+  --subnet=$PSC_SUBNET_NAME \
+  --region=$REGION
+#gcloud compute network-endpoint-groups delete gke-glb-neg --region=$REGION
 
 gcloud compute addresses create gke-glb-address --ip-version=IPV4 --global
 gcloud compute addresses describe gke-glb-address --format="get(address)" --global
@@ -880,7 +900,7 @@ gcloud compute backend-services create gke-glb-backend --load-balancing-scheme=E
 # gcloud compute backend-services delete gke-glb-backend --global
 
 gcloud compute backend-services add-backend gke-glb-backend \
-  --network-endpoint-group=gke-glb-neg --network-endpoint-group-region=asia-southeast1 --global
+  --network-endpoint-group=gke-glb-neg --network-endpoint-group-region=$REGION --global
 
 gcloud compute url-maps create gke-glb-map --default-service=gke-glb-backend --global
 gcloud compute url-maps describe gke-glb-map --format=yaml
@@ -911,10 +931,10 @@ gcloud services enable mesh.googleapis.com
 
 #Run this in Cloud Shell
 ==========================
-REGION="asia-southeast1"
+REGION="$REGION"
 PROJECT="cloud-native-spoke"
 CLUSTER="gke-public-cluster"
-GSA=""
+GSA="infrastructure-spoke-sa@cloud-native-spoke.iam.gserviceaccount.com"
 
 curl https://storage.googleapis.com/csm-artifacts/asm/asmcli_1.15 > asmcli
 
@@ -950,24 +970,24 @@ k apply -f $GKEFOLDERPATH/asm/gateways/istio-egressgateway -n asm-ngw-ns
 #k delete -f $GKEFOLDERPATH/asm/gateways/istio-egressgateway -n asm-ngw-ns
 
 #Secret for TLS for all namespaces
-k create secret tls primary-tls-secret -n asm-ngw-ns --cert="$BASEFOLDERPATH/Misc/Certs/<dns-name>/fullchain.pem" --key="$BASEFOLDERPATH/Misc/Certs/<dns-name>/privkey.pem"
+k create secret tls primary-tls-secret -n asm-ngw-ns --cert="$BASEFOLDERPATH/Misc/Certs/<dns-name>.com/fullchain.pem" --key="$BASEFOLDERPATH/Misc/Certs/<dns-name>.com/privkey.pem"
 #k delete secret primary-tls-secret -n asm-ngw-ns
 
-gcloud compute service-attachments create $INGRESS_SERVICE_ATTACHMENT --region=asia-southeast1 \
+gcloud compute service-attachments create $INGRESS_SERVICE_ATTACHMENT --region=$REGION \
 --producer-forwarding-rule=ab01711818d9c431a96d0f0019a62d13 --connection-preference=ACCEPT_AUTOMATIC \
---nat-subnets=gke-psc-subnet
+--nat-subnets=$PSC_SUBNET_NAME
 #gcloud compute service-attachments delete $INGRESS_SERVICE_ATTACHMENT
 
 gcloud compute network-endpoint-groups create gke-glb-neg \
   --network-endpoint-type=private-service-connect \
-  --psc-target-service=$(gcloud compute service-attachments describe ${INGRESS_SERVICE_ATTACHMENT} --region=asia-southeast1 \
+  --psc-target-service=$(gcloud compute service-attachments describe ${INGRESS_SERVICE_ATTACHMENT} --region=$REGION \
   --format="get(selfLink)") \
-   --network=spoke-vpc \
-  --subnet=gke-psc-subnet \
-  --region=asia-southeast1
-#gcloud compute network-endpoint-groups delete gke-glb-neg --region=asia-southeast1
+   --network=$SPOKE_VPC_NAME \
+  --subnet=$PSC_SUBNET_NAME \
+  --region=$REGION
+#gcloud compute network-endpoint-groups delete gke-glb-neg --region=$REGION
 
-gcloud dns managed-zones update cloud-native-spoke-zone --networks=spoke-vpc,asm-vpc \
+gcloud dns managed-zones update cloud-native-spoke-zone --networks=$SPOKE_VPC_NAME,asm-vpc \
 --description="Private Zone"
 # gcloud dns managed-zones delete cloud-native-spoke-zone
 
@@ -998,7 +1018,7 @@ k annotate serviceaccount gke-smoke-sa -n smoke iam.gke.io/gcp-service-account=$
 curl -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/email
 
 #Secret for TLS for all namespaces
-k create secret tls primary-tls-secret -n asm-ngw-ns --cert="$ROOTPATH/misc/certs/<dns-name>/fullchain.pem" --key="$ROOTPATH/misc/certs/<dns-name>/privkey.pem"
+k create secret tls primary-tls-secret -n asm-ngw-ns --cert="$ROOTPATH/misc/certs/<dns-name>.com/fullchain.pem" --key="$ROOTPATH/misc/certs/<dns-name>.com/privkey.pem"
 #k delete secret primary-tls-secret -n asm-ngw-ns
 
 k apply -f $BASEPATH/addons
@@ -1024,16 +1044,16 @@ k apply -f $BASEPATH/product-catalogue/helloworld/ -n primary
 #k delete -f $BASEPATH/product-catalogue/helloworld/ -n primary
 k apply -f $ISTIOPATH/helloworld-destination-rule.yaml -n primary
 #k delete -f $ISTIOPATH/helloworld-destination-rule.yaml -n primary
-fortio load -c 5 -qps 0 -n 30 -loglevel Warning http://primary-mesh.<dns-name>/hello
+fortio load -c 5 -qps 0 -n 30 -loglevel Warning http://primary-mesh.<dns-name>.com/hello
 
 k apply -f $BASEPATH/product-catalogue/httpbin/httpbin.yaml -n primary
 #k delete -f $BASEPATH/product-catalogue/httpbin/httpbin.yaml -n primary
 k apply -f $ISTIOPATH/httpbin-destination-rule.yaml -n primary
 #k delete -f $ISTIOPATH/httpbin-destination-rule.yaml -n primary
-fortio load -c 1 -qps 0 -n 10 -loglevel Warning http://primary-mesh.<dns-name>/httpbin
-fortio load -c 2 -qps 0 -n 20 -loglevel Warning http://primary-mesh.<dns-name>/httpbin
-fortio load -c 4 -qps 0 -n 20 -loglevel Warning http://primary-mesh.<dns-name>/httpbin
-fortio load -c 7 -qps 0 -n 20 -loglevel Warning http://primary-mesh.<dns-name>/httpbin
+fortio load -c 1 -qps 0 -n 10 -loglevel Warning http://primary-mesh.<dns-name>.com/httpbin
+fortio load -c 2 -qps 0 -n 20 -loglevel Warning http://primary-mesh.<dns-name>.com/httpbin
+fortio load -c 4 -qps 0 -n 20 -loglevel Warning http://primary-mesh.<dns-name>.com/httpbin
+fortio load -c 7 -qps 0 -n 20 -loglevel Warning http://primary-mesh.<dns-name>.com/httpbin
 
 #k apply -f $ISTIOPATH/primary-serviceentry.yaml -n primary
 #k delete -f $ISTIOPATH/primary-serviceentry.yaml -n primary
@@ -1052,9 +1072,9 @@ k delete namespace istio-system asm-system --ignore-not-found=true
 
 Traffic Director
 ====================
-ZONE="asia-southeast1-a"
-NEWORK="spoke-vpc"
-SUBNEWORK="gke-cluster-subnet"
+ZONE="$REGION-a"
+NEWORK="$SPOKE_VPC_NAME"
+SUBNEWORK="$CLUSTER_SUBNET_NAME"
 
 gcloud services enable trafficdirector.googleapis.com
 gcloud services enable dns.googleapis.com
@@ -1074,12 +1094,12 @@ gcloud container clusters list
 Workload Identity for New cluster
 ========================================
 gcloud container clusters update traffic-director-cluster \
-    --zone=asia-southeast1-a \
+    --zone=$REGION-a \
     --workload-pool=$PROJECT_SPOKE.svc.id.goog
 
 gcloud container node-pools update default-pool \
     --cluster=traffic-director-cluster \
-    --workload-metadata=GKE_METADATA --zone=asia-southeast1-a
+    --workload-metadata=GKE_METADATA --zone=$REGION-a
 
 kubectl create serviceaccount gke-identity-sa
 
@@ -1152,7 +1172,7 @@ kubectl apply -f ./demo/trafficdirector_service_sample.yaml
 # kubectl delete -f ./demo/trafficdirector_service_sample.yaml
 
 gcloud compute network-endpoint-groups list
-# gcloud compute network-endpoint-groups delete service-test-neg --zone=asia-southeast1-a
+# gcloud compute network-endpoint-groups delete service-test-neg --zone=$REGION-a
 
 gcloud compute health-checks create http td-gke-health-check --use-serving-port
 # gcloud compute health-checks delete td-gke-health-check 
@@ -1172,7 +1192,7 @@ gcloud compute backend-services create td-gke-service \
 gcloud compute backend-services add-backend td-gke-service \
  --global \
  --network-endpoint-group=service-test-neg \
- --network-endpoint-group-zone=asia-southeast1-a \
+ --network-endpoint-group-zone=$REGION-a \
  --balancing-mode=RATE \
  --max-rate-per-endpoint 5
 
@@ -1207,7 +1227,7 @@ TEST_CMD="wget -q -O - 10.0.0.1; echo"
 kubectl exec -it $BUSYBOX_POD -c busybox -- /bin/sh -c "$TEST_CMD"
 
 gcloud compute --project $PROJECT_SPOKE instances get-guest-attributes gke-traffic-director-clu-default-pool-c7175283-5o7i \
-  --zone=asia-southeast1-a --query-path=td-gke-proxy/proxy-version
+  --zone=$REGION-a --query-path=td-gke-proxy/proxy-version
 ================================================================================
 
 Traffic Director for VMs
@@ -1284,13 +1304,13 @@ curl -H "Host: hello-world" http://10.0.0.1/
 
 Workload Identity for Existing cluster
 ========================================
-gcloud container clusters update gke-private-cluster \
-    --region=asia-southeast1 \
+gcloud container clusters update $CLUSTER_NAME \
+    --region=$REGION \
     --workload-pool=$PROJECT_SPOKE.svc.id.goog
 
 gcloud container node-pools update default-pool \
-    --cluster=gke-private-cluster \
-    --workload-metadata=GKE_METADATA --region=asia-southeast1 
+    --cluster=$CLUSTER_NAME \
+    --workload-metadata=GKE_METADATA --region=$REGION 
 
 kubectl create serviceaccount gke-identity-sa
 
@@ -1313,33 +1333,33 @@ wget --header="Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v
 Artifact Registry
 ==========================================================================================
 gcloud services enable artifactregistry.googleapis.com
-gcloud artifacts repositories create cloud-native-repo --location=asia-southeast1 --repository-format=docker
-#gcloud artifacts repositories delete cloud-native-repo --location=asia-southeast1
+gcloud artifacts repositories create cloud-native-repo --location=$REGION --repository-format=docker
+#gcloud artifacts repositories delete cloud-native-repo --location=$REGION
 gcloud artifacts repositories list
 
-gcloud auth configure-docker <repo-name>
+gcloud auth configure-docker $REGION-docker.pkg.dev
 
 docker pull us-docker.pkg.dev/google-samples/containers/gke/hello-app:1.0
-docker tag us-docker.pkg.dev/google-samples/containers/gke/hello-app:1.0 <repo-name>/$PROJECT_SPOKE/cloud-native-repo/hello-app:v1.0
-docker push <repo-name>/$PROJECT_SPOKE/cloud-native-repo/hello-app:v1.0
+docker tag us-docker.pkg.dev/google-samples/containers/gke/hello-app:1.0 $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/hello-app:v1.0
+docker push $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/hello-app:v1.0
 
 docker pull --platform=linux/amd64 nginx:latest
-docker tag nginx:latest <repo-name>/$PROJECT_SPOKE/cloud-native-repo/nginx-app:v1.0
-docker push <repo-name>/$PROJECT_SPOKE/cloud-native-repo/nginx-app:v1.0
+docker tag nginx:latest $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/nginx-app:v1.0
+docker push $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/nginx-app:v1.0
 
-docker build -t <repo-name>/$PROJECT_SPOKE/cloud-native-repo/ratings-api:v1.0.0 .
-docker push <repo-name>/$PROJECT_SPOKE/cloud-native-repo/ratings-api:v1.0.0
+docker build -t $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/ratings-api:v1.0.0 .
+docker push $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/ratings-api:v1.0.0
 
-docker build -t <repo-name>/$PROJECT_SPOKE/cloud-native-repo/ratings-web:v1.0.0 .
-docker push <repo-name>/$PROJECT_SPOKE/cloud-native-repo/ratings-web:v1.0.0
+docker build -t $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/ratings-web:v1.0.0 .
+docker push $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/ratings-web:v1.0.0
 
-# gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://<repo-name>
+# gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
-gcloud artifacts docker images list <repo-name>/$PROJECT_SPOKE/cloud-native-repo
-# gcloud artifacts docker images delete <repo-name>/$PROJECT_SPOKE/cloud-native-repo/hello-app
-# gcloud artifacts docker images delete <repo-name>/$PROJECT_SPOKE/cloud-native-repo/nginx-app
-# gcloud artifacts docker images delete <repo-name>/$PROJECT_SPOKE/cloud-native-repo/ratings-web
-# gcloud artifacts docker images delete <repo-name>/$PROJECT_SPOKE/cloud-native-repo/ratings-api
+gcloud artifacts docker images list $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo
+# gcloud artifacts docker images delete $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/hello-app
+# gcloud artifacts docker images delete $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/nginx-app
+# gcloud artifacts docker images delete $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/ratings-web
+# gcloud artifacts docker images delete $REGION-docker.pkg.dev/$PROJECT_SPOKE/cloud-native-repo/ratings-api
 
 Keycloak
 =============================================
@@ -1375,13 +1395,13 @@ gcloud projects add-iam-policy-binding cloud-native-workshop --member="serviceAc
 
 gcloud auth activate-service-account --key-file="/Users/monojitd/Workloads/Development/Projects/GithubProjects/Workshops/GCP-Workshop/Misc/cloud-native-workshop-sa.json"
 gcloud config set account cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com 
-gcloud config set compute/region asia-southeast1
+gcloud config set compute/region $REGION
 
 gcloud compute networks create cloud-native-vpc --project=cloud-native-workshop --subnet-mode=custom --mtu=1460 \
 --bgp-routing-mode=regional
 
 gcloud compute networks subnets create linux-vm-subnet --project=cloud-native-workshop --range=11.0.0.0/16 \
---stack-type=IPV4_ONLY --network=cloud-native-vpc --region=asia-southeast1
+--stack-type=IPV4_ONLY --network=cloud-native-vpc --region=$REGION
 
 Regional LB
 ==============================================================================================================================
@@ -1390,8 +1410,8 @@ gcloud compute networks create cloud-native-vpc --subnet-mode=custom
 gcloud compute firewall-rules create allow-all-rule --network cloud-native-vpc --allow tcp,udp,icmp --source-ranges=0.0.0.0/0
 gcloud compute networks subnets create cloud-lb-subnet --network=cloud-native-vpc --range=11.0.0.0/24
 
-gcloud compute instances create cloud-lb-vm --network=cloud-native-vpc --subnet=cloud-lb-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete cloud-lb-vm --zone=asia-southeast1-b
+gcloud compute instances create cloud-lb-vm --network=cloud-native-vpc --subnet=cloud-lb-subnet --zone=$ZONE
+# gcloud compute instances delete cloud-lb-vm --zone=$ZONE
 
 gcloud compute networks subnets create proxy-only-subnet --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE \
 --network=cloud-native-vpc --range=11.0.1.0/24
@@ -1400,40 +1420,40 @@ gcloud compute networks subnets create proxy-only-subnet --purpose=REGIONAL_MANA
 gcloud compute addresses create cloud-lb-address --network-tier=STANDARD
 # gcloud compute addresses delete cloud-lb-address
 
-gcloud compute network-endpoint-groups create today-serverless-neg --region=asia-southeast1 --network-endpoint-type=serverless \
+gcloud compute network-endpoint-groups create today-serverless-neg --region=$REGION --network-endpoint-type=serverless \
 --cloud-run-service=today-cloud-run
-# gcloud compute network-endpoint-groups delete today-serverless-neg --region=asia-southeast1
+# gcloud compute network-endpoint-groups delete today-serverless-neg --region=$REGION
 
-gcloud compute network-endpoint-groups create tomorrow-serverless-neg --region=asia-southeast1 --network-endpoint-type=serverless \
+gcloud compute network-endpoint-groups create tomorrow-serverless-neg --region=$REGION --network-endpoint-type=serverless \
 --cloud-run-service=tomorrow-cloud-run
-# gcloud compute network-endpoint-groups delete tomorrow-serverless-neg --region=asia-southeast1
+# gcloud compute network-endpoint-groups delete tomorrow-serverless-neg --region=$REGION
 
 gcloud beta compute backend-services create today-service-backend --load-balancing-scheme=EXTERNAL_MANAGED --protocol=HTTP \
---region=asia-southeast1
-# gcloud beta compute backend-services delete today-service-backend --region=asia-southeast1
-gcloud beta compute backend-services add-backend today-service-backend --region=asia-southeast1 \
---network-endpoint-group=today-serverless-neg --network-endpoint-group-region=asia-southeast1
+--region=$REGION
+# gcloud beta compute backend-services delete today-service-backend --region=$REGION
+gcloud beta compute backend-services add-backend today-service-backend --region=$REGION \
+--network-endpoint-group=today-serverless-neg --network-endpoint-group-region=$REGION
 
 gcloud beta compute backend-services create tomorrow-service-backend --load-balancing-scheme=EXTERNAL_MANAGED --protocol=HTTP \
---region=asia-southeast1
-# gcloud beta compute backend-services delete tomorrow-service-backend --region=asia-southeast1
-gcloud beta compute backend-services add-backend tomorrow-service-backend --region=asia-southeast1 \
---network-endpoint-group=tomorrow-serverless-neg --network-endpoint-group-region=asia-southeast1
+--region=$REGION
+# gcloud beta compute backend-services delete tomorrow-service-backend --region=$REGION
+gcloud beta compute backend-services add-backend tomorrow-service-backend --region=$REGION \
+--network-endpoint-group=tomorrow-serverless-neg --network-endpoint-group-region=$REGION
     
-gcloud beta compute url-maps create cloud-native-map --default-service=today-service-backend --region=asia-southeast1
+gcloud beta compute url-maps create cloud-native-map --default-service=today-service-backend --region=$REGION
 OR, 
-gcloud beta compute url-maps import cloud-native-map  --source=./LoadBalancer/url-map.yaml --region=asia-southeast1
-# gcloud beta compute url-maps delete cloud-native-map --region=asia-southeast1
+gcloud beta compute url-maps import cloud-native-map  --source=./LoadBalancer/url-map.yaml --region=$REGION
+# gcloud beta compute url-maps delete cloud-native-map --region=$REGION
 
-gcloud beta compute target-http-proxies create cloud-lb-http-proxy --url-map=cloud-native-map --region=asia-southeast1
-# gcloud beta compute target-http-proxies delete cloud-lb-http-proxy --region=asia-southeast1
+gcloud beta compute target-http-proxies create cloud-lb-http-proxy --url-map=cloud-native-map --region=$REGION
+# gcloud beta compute target-http-proxies delete cloud-lb-http-proxy --region=$REGION
 
 gcloud beta compute forwarding-rules create cloud-lb-forwarding-rule \
 --load-balancing-scheme=EXTERNAL_MANAGED --network-tier=STANDARD --network=cloud-native-vpc \
---address=cloud-lb-address --target-http-proxy=cloud-lb-http-proxy --target-http-proxy-region=asia-southeast1 \
---region=asia-southeast1 --ports=80
+--address=cloud-lb-address --target-http-proxy=cloud-lb-http-proxy --target-http-proxy-region=$REGION \
+--region=$REGION --ports=80
 
-# gcloud beta compute forwarding-rules delete cloud-lb-forwarding-rule --region=asia-southeast1
+# gcloud beta compute forwarding-rules delete cloud-lb-forwarding-rule --region=$REGION
     
 curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" http://35.213.144.186.nip.io/cr
 
@@ -1453,26 +1473,26 @@ gcloud compute addresses create cloud-lb-address --ip-version=IPV4 --network-tie
 gcloud compute addresses describe cloud-lb-address --format="get(address)" --global
 # gcloud compute addresses delete cloud-lb-address --global
 
-gcloud compute network-endpoint-groups create today-serverless-neg --region=asia-southeast1 --network-endpoint-type=serverless \
+gcloud compute network-endpoint-groups create today-serverless-neg --region=$REGION --network-endpoint-type=serverless \
 --cloud-run-service=today-cloud-run
-# gcloud compute network-endpoint-groups delete today-serverless-neg --region=asia-southeast1
+# gcloud compute network-endpoint-groups delete today-serverless-neg --region=$REGION
 
-gcloud compute network-endpoint-groups create tomorrow-serverless-neg --region=asia-southeast1 --network-endpoint-type=serverless \
+gcloud compute network-endpoint-groups create tomorrow-serverless-neg --region=$REGION --network-endpoint-type=serverless \
 --cloud-run-service=tomorrow-cloud-run
-# gcloud compute network-endpoint-groups delete tomorrow-serverless-neg --region=asia-southeast1
+# gcloud compute network-endpoint-groups delete tomorrow-serverless-neg --region=$REGION
 
 gcloud beta compute backend-services create today-service-backend --load-balancing-scheme=EXTERNAL_MANAGED --global
 # gcloud beta compute backend-services delete today-service-backend --global
 gcloud beta compute backend-services add-backend today-service-backend \
---network-endpoint-group=today-serverless-neg --network-endpoint-group-region=asia-southeast1 --global
+--network-endpoint-group=today-serverless-neg --network-endpoint-group-region=$REGION --global
 
 gcloud beta compute backend-services create tomorrow-service-backend --load-balancing-scheme=EXTERNAL_MANAGED \
 --global
 # gcloud beta compute backend-services delete tomorrow-service-backend --global
 gcloud beta compute backend-services add-backend tomorrow-service-backend \
---network-endpoint-group=tomorrow-serverless-neg --network-endpoint-group-region=asia-southeast1 --global
+--network-endpoint-group=tomorrow-serverless-neg --network-endpoint-group-region=$REGION --global
     
-gcloud beta compute url-maps create cloud-native-map --default-service=today-service-backend --region=asia-southeast1
+gcloud beta compute url-maps create cloud-native-map --default-service=today-service-backend --region=$REGION
 OR, 
 gcloud beta compute url-maps import cloud-native-map  --source=./LoadBalancer/url-map-global.yaml --global 
 # gcloud beta compute url-maps delete cloud-native-map --global
@@ -1512,45 +1532,45 @@ OR,
 gcloud compute networks subnets create cloud-lb-subnet --network=cloud-native-vpc --range=11.0.0.0/24
 # gcloud compute networks subnets delete cloud-lb-subnet
 
-gcloud compute instances create cloud-lb-vm --network=cloud-native-vpc --subnet=cloud-lb-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete cloud-lb-vm --zone=asia-southeast1-b
+gcloud compute instances create cloud-lb-vm --network=cloud-native-vpc --subnet=cloud-lb-subnet --zone=$ZONE
+# gcloud compute instances delete cloud-lb-vm --zone=$ZONE
 
 gcloud compute networks subnets create proxy-only-subnet --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE \
 --network=cloud-native-vpc --range=11.0.1.0/24
 # gcloud compute networks subnets delete proxy-only-subnet
 
-gcloud compute networks subnets create cloud-psc-subnet --network=cloud-native-vpc --region=asia-southeast1 \
+gcloud compute networks subnets create cloud-psc-subnet --network=cloud-native-vpc --region=$REGION \
 --range=11.0.2.0/24 --purpose=PRIVATE_SERVICE_CONNECT
 # gcloud compute networks subnets delete cloud-psc-subnet
 
-gcloud compute addresses create cloud-lb-address --subnet=cloud-lb-subnet --region=asia-southeast1
-gcloud compute addresses describe cloud-lb-address --format="get(address)" --region=asia-southeast1
-# gcloud compute addresses delete cloud-lb-address --region=asia-southeast1
+gcloud compute addresses create cloud-lb-address --subnet=cloud-lb-subnet --region=$REGION
+gcloud compute addresses describe cloud-lb-address --format="get(address)" --region=$REGION
+# gcloud compute addresses delete cloud-lb-address --region=$REGION
 
-gcloud compute network-endpoint-groups create today-serverless-neg --region=asia-southeast1 --network-endpoint-type=serverless \
+gcloud compute network-endpoint-groups create today-serverless-neg --region=$REGION --network-endpoint-type=serverless \
 --cloud-run-service=today-cloud-run
-# gcloud compute network-endpoint-groups delete today-serverless-neg --region=asia-southeast1
+# gcloud compute network-endpoint-groups delete today-serverless-neg --region=$REGION
 
-gcloud compute network-endpoint-groups create tomorrow-serverless-neg --region=asia-southeast1 --network-endpoint-type=serverless \
+gcloud compute network-endpoint-groups create tomorrow-serverless-neg --region=$REGION --network-endpoint-type=serverless \
 --cloud-run-service=tomorrow-cloud-run
-# gcloud compute network-endpoint-groups delete tomorrow-serverless-neg --region=asia-southeast1
+# gcloud compute network-endpoint-groups delete tomorrow-serverless-neg --region=$REGION
 
 gcloud beta compute backend-services create today-service-backend --load-balancing-scheme=INTERNAL_MANAGED --protocol=HTTPS \
---region=asia-southeast1
-# gcloud beta compute backend-services delete today-service-backend --region=asia-southeast1
-gcloud beta compute backend-services add-backend today-service-backend --region=asia-southeast1 \
---network-endpoint-group=today-serverless-neg --network-endpoint-group-region=asia-southeast1
+--region=$REGION
+# gcloud beta compute backend-services delete today-service-backend --region=$REGION
+gcloud beta compute backend-services add-backend today-service-backend --region=$REGION \
+--network-endpoint-group=today-serverless-neg --network-endpoint-group-region=$REGION
 
 gcloud beta compute backend-services create tomorrow-service-backend --load-balancing-scheme=INTERNAL_MANAGED --protocol=HTTPS \
---region=asia-southeast1
-# gcloud beta compute backend-services delete tomorrow-service-backend --region=asia-southeast1
-gcloud beta compute backend-services add-backend tomorrow-service-backend --region=asia-southeast1 \
---network-endpoint-group=tomorrow-serverless-neg --network-endpoint-group-region=asia-southeast1
+--region=$REGION
+# gcloud beta compute backend-services delete tomorrow-service-backend --region=$REGION
+gcloud beta compute backend-services add-backend tomorrow-service-backend --region=$REGION \
+--network-endpoint-group=tomorrow-serverless-neg --network-endpoint-group-region=$REGION
     
-gcloud beta compute url-maps create cloud-native-map --default-service=today-service-backend --region=asia-southeast1
+gcloud beta compute url-maps create cloud-native-map --default-service=today-service-backend --region=$REGION
 OR, 
-gcloud beta compute url-maps import cloud-native-map  --source=./LoadBalancer/url-map.yaml --region=asia-southeast1
-# gcloud beta compute url-maps delete cloud-native-map --region=asia-southeast1
+gcloud beta compute url-maps import cloud-native-map  --source=./LoadBalancer/url-map.yaml --region=$REGION
+# gcloud beta compute url-maps delete cloud-native-map --region=$REGION
 
 ## Self-signed certificate
 ===========================
@@ -1559,25 +1579,25 @@ openssl req -new -key cloud-native.key -out cloud-native.csr -config ossl-conf.t
 openssl x509 -req -signkey cloud-native.key -in cloud-native.csr -out cloud-native.pem -extfile ossl-conf.txt -extensions extension_requirements \
 -days 360
 gcloud compute ssl-certificates create cloud-internal-lb-cert --certificate=./Misc/Certs/internalnative.com/cloud-native.pem \
---private-key=./Misc/Certs/internalnative.com/cloud-native.key --region=asia-southeast1
-# gcloud compute ssl-certificates delete cloud-internal-lb-cert --region=asia-southeast1
+--private-key=./Misc/Certs/internalnative.com/cloud-native.key --region=$REGION
+# gcloud compute ssl-certificates delete cloud-internal-lb-cert --region=$REGION
 ===========================
 
 gcloud beta compute target-https-proxies create cloud-lb-https-proxy --ssl-certificates=cloud-internal-lb-cert \
---url-map=cloud-native-map --region=asia-southeast1
-# gcloud beta compute target-https-proxies delete cloud-lb-https-proxy --region=asia-southeast1
+--url-map=cloud-native-map --region=$REGION
+# gcloud beta compute target-https-proxies delete cloud-lb-https-proxy --region=$REGION
 
 gcloud beta compute forwarding-rules create cloud-lb-forwarding-rule \
 --load-balancing-scheme=INTERNAL_MANAGED --network-tier=PREMIUM --network=cloud-native-vpc --subnet=cloud-lb-subnet \
---address=cloud-lb-address --target-https-proxy=cloud-lb-https-proxy --target-https-proxy-region=asia-southeast1 \
---region=asia-southeast1 --ports=443
-# gcloud beta compute forwarding-rules delete cloud-lb-forwarding-rule --region=asia-southeast1
+--address=cloud-lb-address --target-https-proxy=cloud-lb-https-proxy --target-https-proxy-region=$REGION \
+--region=$REGION --ports=443
+# gcloud beta compute forwarding-rules delete cloud-lb-forwarding-rule --region=$REGION
 
 gcloud compute instances create vm-client --image-family=debian-10 --image-project=debian-cloud --tags=allow-ssh \
---network=cloud-native-vpc --subnet=cloud-lb-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete vm-client --zone=asia-southeast1-b
+--network=cloud-native-vpc --subnet=cloud-lb-subnet --zone=$ZONE
+# gcloud compute instances delete vm-client --zone=$ZONE
 
-gcloud compute ssh --zone asia-southeast1-b vm-client --project cloud-native-workshop
+gcloud compute ssh --zone $ZONE vm-client --project cloud-native-workshop
 
 ## Private Cloud DNS Zone
 ==========================
@@ -1594,7 +1614,7 @@ curl -k -H "Authorization: Bearer $(gcloud auth print-identity-token)" https://c
 
 ## Service-attachment
 ============================================
-gcloud beta compute service-attachments create cloud-run-attachment --region=asia-southeast1 \
+gcloud beta compute service-attachments create cloud-run-attachment --region=$REGION \
 --producer-forwarding-rule=cloud-lb-forwarding-rule --connection-preference=ACCEPT_AUTOMATIC \
 --nat-subnets=cloud-psc-subnet
 # gcloud beta compute service-attachments delete cloud-run-attachment
@@ -1608,23 +1628,23 @@ gcloud compute networks create cloud-psc-test-vpc --subnet-mode=custom
 gcloud compute firewall-rules create allow-psc-test-all-rule --network cloud-psc-test-vpc --allow tcp,udp,icmp --source-ranges=0.0.0.0/0
 # gcloud compute firewall-rules delete allow-psc-test-all-rule
 
-gcloud compute networks subnets create cloud-psc-test-subnet --network=cloud-psc-test-vpc --region=asia-southeast1 \
+gcloud compute networks subnets create cloud-psc-test-subnet --network=cloud-psc-test-vpc --region=$REGION \
 --range=12.0.0.0/24
 # gcloud compute networks subnets delete cloud-psc-test-subnet
 
-gcloud compute addresses create psc-ip-endpoint --region=asia-southeast1 --subnet=cloud-psc-test-subnet
+gcloud compute addresses create psc-ip-endpoint --region=$REGION --subnet=cloud-psc-test-subnet
 # gcloud compute addresses delete psc-ip-endpoint
 
-gcloud compute forwarding-rules create fr-psc-endpoint --region=asia-southeast1 --network cloud-psc-test-vpc \
+gcloud compute forwarding-rules create fr-psc-endpoint --region=$REGION --network cloud-psc-test-vpc \
 --address psc-ip-endpoint \
 --target-service-attachment $(gcloud beta compute service-attachments describe cloud-run-attachment --format="get(selfLink)")
 # gcloud compute forwarding-rules delete fr-psc-endpoint
 
 gcloud compute instances create vm-psc-client --image-family=debian-10 --image-project=debian-cloud --tags=allow-ssh \
---network=cloud-psc-test-vpc --subnet=cloud-psc-test-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete vm-psc-client --zone=asia-southeast1-b
+--network=cloud-psc-test-vpc --subnet=cloud-psc-test-subnet --zone=$ZONE
+# gcloud compute instances delete vm-psc-client --zone=$ZONE
 
-gcloud compute ssh --zone asia-southeast1-b vm-psc-client --project cloud-native-workshop
+gcloud compute ssh --zone $ZONE vm-psc-client --project cloud-native-workshop
 
 curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" http://12.0.0.2/cr
 
@@ -1636,15 +1656,15 @@ gcloud compute addresses describe cloud-glb-address --format="get(address)" --gl
 
 gcloud beta compute network-endpoint-groups create cloud-glb-neg \
   --network-endpoint-type=private-service-connect \
-  --psc-target-service=$(gcloud beta compute service-attachments describe cloud-run-attachment --region=asia-southeast1 \
-  --format="get(selfLink)") --region=asia-southeast1
-# gcloud beta compute network-endpoint-groups delete cloud-glb-neg --region=asia-southeast1
+  --psc-target-service=$(gcloud beta compute service-attachments describe cloud-run-attachment --region=$REGION \
+  --format="get(selfLink)") --region=$REGION
+# gcloud beta compute network-endpoint-groups delete cloud-glb-neg --region=$REGION
 
 gcloud beta compute backend-services create cloud-glb-backend --load-balancing-scheme=EXTERNAL_MANAGED --protocol=HTTPS --global
 # gcloud beta compute backend-services delete cloud-glb-backend --global
 
 gcloud beta compute backend-services add-backend cloud-glb-backend \
-  --network-endpoint-group=cloud-glb-neg --network-endpoint-group-region=asia-southeast1 --global
+  --network-endpoint-group=cloud-glb-neg --network-endpoint-group-region=$REGION --global
 
 gcloud beta compute url-maps create cloud-glb-map --default-service=cloud-glb-backend --global
 gcloud beta compute url-maps describe cloud-glb-map --format=yaml
@@ -1670,9 +1690,9 @@ gcloud iam service-accounts add-iam-policy-binding cloud-native-workshop-sa@clou
 # gcloud iam service-accounts remove-iam-policy-binding cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com --member=user:datta.monojit@gmail.com --role=roles/iam.serviceAccountTokenCreator
 
 gcloud auth print-identity-token
-gcloud auth print-identity-token --impersonate-service-account=cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com --audiences="https://asia-southeast1-cloud-native-workshop.cloudfunctions.net/cloud-function-hello"
+gcloud auth print-identity-token --impersonate-service-account=cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com --audiences="https://$REGION-cloud-native-workshop.cloudfunctions.net/cloud-function-hello"
 
-curl "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://asia-southeast1-cloud-native-workshop.cloudfunctions.net/cloud-function-hello" -H "Metadata-Flavor: Google"
+curl "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://$REGION-cloud-native-workshop.cloudfunctions.net/cloud-function-hello" -H "Metadata-Flavor: Google"
 
 
 Workflows
@@ -1692,35 +1712,35 @@ brew install redis
 
 Artifact Registry
 ==========================================================================================
-gcloud artifacts repositories create cloud-native-repo --location=asia-southeast1 --repository-format=docker
+gcloud artifacts repositories create cloud-native-repo --location=$REGION --repository-format=docker
 gcloud artifacts repositories list
 
-gcloud auth configure-docker <repo-name>
+gcloud auth configure-docker $REGION-docker.pkg.dev
 docker pull us-docker.pkg.dev/google-samples/containers/gke/hello-app:1.0
-docker tag us-docker.pkg.dev/google-samples/containers/gke/hello-app:1.0 <repo-name>/cloud-native-workshop/cloud-native-repo/hello-app:v1.0
-docker push <repo-name>/cloud-native-workshop/cloud-native-repo/hello-app:v1.0
-gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://<repo-name>
+docker tag us-docker.pkg.dev/google-samples/containers/gke/hello-app:1.0 $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/hello-app:v1.0
+docker push $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/hello-app:v1.0
+gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
-gcloud artifacts docker images list <repo-name>/cloud-native-workshop/cloud-native-repo
-gcloud artifacts docker images delete <repo-name>/cloud-native-workshop/cloud-native-repo/hello-app
+gcloud artifacts docker images list $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo
+gcloud artifacts docker images delete $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/hello-app
 
-docker build --platform=linux/amd64 -t <repo-name>/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0 .
-docker run --name today-cloud-run -d -p 8080:8080 <repo-name>/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0
-docker push <repo-name>/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0
+docker build --platform=linux/amd64 -t $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0 .
+docker run --name today-cloud-run -d -p 8080:8080 $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0
+docker push $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0
 
-gcloud artifacts docker images list <repo-name>/cloud-native-workshop/cloud-native-repo
-# gcloud artifacts docker images delete <repo-name>/cloud-native-workshop/cloud-native-repo/today-cloud-run
+gcloud artifacts docker images list $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo
+# gcloud artifacts docker images delete $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/today-cloud-run
 
-docker build --platform=linux/amd64 -t <repo-name>/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0 .
-docker run --name today-cloud-run -d -p 8080:8080 <repo-name>/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0
-docker push <repo-name>/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0
+docker build --platform=linux/amd64 -t $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0 .
+docker run --name today-cloud-run -d -p 8080:8080 $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0
+docker push $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run:v1.0
 
-gcloud artifacts docker images list <repo-name>/cloud-native-workshop/cloud-native-repo
-# gcloud artifacts docker images delete <repo-name>/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run
+gcloud artifacts docker images list $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo
+# gcloud artifacts docker images delete $REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/tomorrow-cloud-run
 
 App Engines
 ==========================================================================================
-gcloud app create --project=cloud-native-workshop --region=asia-southeast1
+gcloud app create --project=cloud-native-workshop --region=$REGION
 git clone https://github.com/GoogleCloudPlatform/nodejs-docs-samples
 gcloud app deploy
 
@@ -1734,27 +1754,27 @@ gcloud app deploy --service-account=cloud-native-workshop-sa@cloud-native-worksh
 Cloud Run
 ==========================================================================================
 
-gcloud run deploy today-cloud-run --source=. --cpu=1 --memory=500Mi --min-instances=1 --region=asia-southeast1 \
+gcloud run deploy today-cloud-run --source=. --cpu=1 --memory=500Mi --min-instances=1 --region=$REGION \
 --service-account=cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com --ingress=internal-and-cloud-load-balancing \
 --revision-suffix=v10 --allow-unauthenticated
 
-gcloud run deploy today-cloud-run --image="<repo-name>/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0" \
---cpu=1 --memory=500Mi --min-instances=1 --region=asia-southeast1 --port=7071 \
+gcloud run deploy today-cloud-run --image="$REGION-docker.pkg.dev/cloud-native-workshop/cloud-native-repo/today-cloud-run:v1.0" \
+--cpu=1 --memory=500Mi --min-instances=1 --region=$REGION --port=7071 \
 --service-account=cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com --ingress=internal-and-cloud-load-balancing \
 --revision-suffix=v10
 
-# gcloud run services delete today-cloud-run --region=asia-southeast1
+# gcloud run services delete today-cloud-run --region=$REGION
 curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" https://today-cloud-run-pqkdv6pa6q-as.a.run.app
 
-gcloud run deploy tomorrow-cloud-run --source=. --cpu=1 --memory=500Mi --min-instances=1 --region=asia-southeast1 \
+gcloud run deploy tomorrow-cloud-run --source=. --cpu=1 --memory=500Mi --min-instances=1 --region=$REGION \
 --service-account=cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com --ingress=internal-and-cloud-load-balancing \
 --revision-suffix=v10 --allow-unauthenticated
-# gcloud run services delete tomorrow-cloud-run --region=asia-southeast1
+# gcloud run services delete tomorrow-cloud-run --region=$REGION
 
-gcloud run services add-iam-policy-binding hello-cloud-run --region=asia-southeast1 \
+gcloud run services add-iam-policy-binding hello-cloud-run --region=$REGION \
   --member="serviceAccount:cloud-native-workshop-sa@cloud-native-workshop.iam.gserviceaccount.com" --role="roles/run.invoker"
 
-gcloud run services delete hello-cloud-run --region=asia-southeast1
+gcloud run services delete hello-cloud-run --region=$REGION
 
 Cloud Tasks
 ==========================================================================================
@@ -1770,22 +1790,24 @@ gcloud tasks queues describe cloud-native-queue
 
 GKE (Standard)
 ====================
+ZONE2="$REGION-c"
+
 gcloud compute networks create gke-cluster-vpc --subnet-mode=custom
 gcloud compute firewall-rules create gke-allow-all-rule --network gke-cluster-vpc --allow tcp,udp,icmp --source-ranges=0.0.0.0/0
 
-gcloud compute networks subnets create gke-cluster-subnet --network=gke-cluster-vpc --range=12.0.0.0/22
-gcloud compute networks subnets update gke-cluster-subnet --add-secondary-ranges=pods-range=12.1.0.0/16,services-range=12.2.0.0/16
-# gcloud compute networks subnets delete gke-cluster-subnet 
+gcloud compute networks subnets create $CLUSTER_SUBNET_NAME --network=gke-cluster-vpc --range=12.0.0.0/22
+gcloud compute networks subnets update $CLUSTER_SUBNET_NAME --add-secondary-ranges=pods-range=12.1.0.0/16,services-range=12.2.0.0/16
+# gcloud compute networks subnets delete $CLUSTER_SUBNET_NAME 
 
-gcloud compute networks subnets create gke-proxy-only-subnet --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE \
+gcloud compute networks subnets create $PROXY_SUBNET_NAME --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE \
 --network=gke-cluster-vpc --range=12.0.4.0/24
-# gcloud compute networks subnets delete gke-proxy-only-subnet
+# gcloud compute networks subnets delete $PROXY_SUBNET_NAME
 
-gcloud compute networks subnets create gke-psc-subnet --purpose=PRIVATE_SERVICE_CONNECT --role=ACTIVE \
+gcloud compute networks subnets create $PSC_SUBNET_NAME --purpose=PRIVATE_SERVICE_CONNECT --role=ACTIVE \
 --network=gke-cluster-vpc --range=12.0.5.0/24
-# gcloud compute networks subnets delete gke-psc-subnet
+# gcloud compute networks subnets delete $PSC_SUBNET_NAME
 
-gcloud compute networks subnets create gke-psc-test-subnet --network=gke-cluster-vpc --region=asia-southeast1 \
+gcloud compute networks subnets create gke-psc-test-subnet --network=gke-cluster-vpc --region=$REGION \
 --range=12.0.6.0/24
 # gcloud compute networks subnets delete gke-psc-test-subnet
 
@@ -1793,12 +1815,12 @@ gcloud components install gke-gcloud-auth-plugin
 gke-gcloud-auth-plugin --version
 
 gcloud container clusters create zonal-gke-cluster --release-channel=regular --network=gke-cluster-vpc \
---subnetwork=gke-cluster-subnet \
---zone=asia-southeast1-b --num-nodes=1 --node-locations=asia-southeast1-b,asia-southeast1-c --enable-ip-alias \
+--subnetwork=$CLUSTER_SUBNET_NAME \
+--zone=$ZONE --num-nodes=1 --node-locations=$ZONE,$ZONE2 --enable-ip-alias \
 --cluster-ipv4-cidr=10.0.0.0/16 --services-ipv4-cidr=10.1.0.0/16
 # gcloud container clusters delete zonal-gke-cluster
 
-gcloud container clusters get-credentials  zonal-gke-cluster --zone=asia-southeast1-b
+gcloud container clusters get-credentials  zonal-gke-cluster --zone=$ZONE
 
 ## Self-signed certificate
 ===========================
@@ -1810,8 +1832,8 @@ openssl x509 -req -signkey internal-gke.key -in internal-gke.csr -out internal-g
 -extensions extension_requirements -days 360
 
 gcloud compute ssl-certificates create gke-ingress-cert --certificate=./Misc/Certs/internalgke.com/internal-gke.pem \
---private-key=./Misc/Certs/internalgke.com/internal-gke.key --region=asia-southeast1
-# gcloud compute ssl-certificates delete gke-ingress-cert --region=asia-southeast1
+--private-key=./Misc/Certs/internalgke.com/internal-gke.key --region=$REGION
+# gcloud compute ssl-certificates delete gke-ingress-cert --region=$REGION
 ===========================
 Or, Secret
 ===========================
@@ -1834,27 +1856,27 @@ gcloud dns record-sets update ingress.internal.gke.com. \
 # gcloud dns record-sets delete ingress.internal.native.com --type=A --zone=gke-internal-zone
 
 gcloud compute instances create vm-psc-client --image-family=debian-10 --image-project=debian-cloud --tags=allow-ssh \
---network=gke-cluster-vpc --subnet=gke-psc-test-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete vm-psc-client --zone=asia-southeast1-b
+--network=gke-cluster-vpc --subnet=gke-psc-test-subnet --zone=$ZONE
+# gcloud compute instances delete vm-psc-client --zone=$ZONE
 
-gcloud compute ssh --zone asia-southeast1-b vm-psc-client --project cloud-native-workshop
+gcloud compute ssh --zone $ZONE vm-psc-client --project cloud-native-workshop
 
 curl -k https://ingress.internal.gke.com/
 
 ## GKE Service-attachment
 ============================================
-gcloud beta compute service-attachments create gke-ingress-attachment --region=asia-southeast1 \
+gcloud beta compute service-attachments create gke-ingress-attachment --region=$REGION \
 --producer-forwarding-rule=k8s2-fs-365qacpe-default-internal-ingress-x1ngf2g6 --connection-preference=ACCEPT_AUTOMATIC \
---nat-subnets=gke-psc-subnet
+--nat-subnets=$PSC_SUBNET_NAME
 # gcloud beta compute service-attachments delete gke-ingress-attachment
 
 ## Global Https LB to GKE Service-attachment
 ============================================
 gcloud beta compute network-endpoint-groups create gke-glb-neg \
   --network-endpoint-type=private-service-connect \
-  --psc-target-service=$(gcloud beta compute service-attachments describe gke-ingress-attachment --region=asia-southeast1 \
-  --format="get(selfLink)") --region=asia-southeast1
-# gcloud beta compute network-endpoint-groups delete gke-glb-neg --region=asia-southeast1
+  --psc-target-service=$(gcloud beta compute service-attachments describe gke-ingress-attachment --region=$REGION \
+  --format="get(selfLink)") --region=$REGION
+# gcloud beta compute network-endpoint-groups delete gke-glb-neg --region=$REGION
 
 gcloud compute addresses create gke-glb-address --ip-version=IPV4 --global
 gcloud compute addresses describe gke-glb-address --format="get(address)" --global
@@ -1864,7 +1886,7 @@ gcloud beta compute backend-services create gke-glb-backend --load-balancing-sch
 # gcloud beta compute backend-services delete gke-glb-backend --global
 
 gcloud beta compute backend-services add-backend gke-glb-backend \
-  --network-endpoint-group=gke-glb-neg --network-endpoint-group-region=asia-southeast1 --global
+  --network-endpoint-group=gke-glb-neg --network-endpoint-group-region=$REGION --global
 
 gcloud beta compute url-maps create gke-glb-map --default-service=gke-glb-backend --global
 gcloud beta compute url-maps describe gke-glb-map --format=yaml
@@ -1887,9 +1909,9 @@ curl -k https://gkeapps.wkshpdev.com/
 GKE (AutoPilot)
 =================
 
-gcloud container clusters create-auto my-autopilot-cluster --region asia-southeast1
-# gcloud container clusters delete my-autopilot-cluster --region asia-southeast1
-gcloud container clusters get-credentials my-autopilot-cluster --region asia-southeast1
+gcloud container clusters create-auto my-autopilot-cluster --region $REGION
+# gcloud container clusters delete my-autopilot-cluster --region $REGION
+gcloud container clusters get-credentials my-autopilot-cluster --region $REGION
 
 git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
 
@@ -1926,25 +1948,25 @@ gcloud compute firewall-rules create fw-allow-proxies \
   --rules=tcp:80,tcp:443,tcp:8080
 
 gcloud container clusters create-auto gke-auto-private-cluster \
-    --region asia-southeast1 \
+    --region $REGION \
     --enable-master-authorized-networks \
     --network gke-auto-cluster-vpc \
     --subnetwork gke-auto-cluster-subnet --cluster-secondary-range-name pods-range --services-secondary-range-name services-range \
     --enable-private-nodes
 
-# gcloud container clusters delete gke-auto-private-cluster --region=asia-southeast1
-gcloud container clusters get-credentials gke-auto-private-cluster --region asia-southeast1
+# gcloud container clusters delete gke-auto-private-cluster --region=$REGION
+gcloud container clusters get-credentials gke-auto-private-cluster --region $REGION
 
 ## Jumper VM
 ===============
 gcloud compute instances create gke-jumper-client --image-family=debian-10 --image-project=debian-cloud --tags=allow-ssh \
---network=gke-auto-cluster-vpc --subnet=gke-jumper-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete gke-jumper-client --zone=asia-southeast1-b
+--network=gke-auto-cluster-vpc --subnet=gke-jumper-subnet --zone=$ZONE
+# gcloud compute instances delete gke-jumper-client --zone=$ZONE
 
 gcloud container clusters update gke-auto-private-cluster --enable-master-authorized-networks \
---master-authorized-networks=35.187.232.75/32 --region=asia-southeast1
+--master-authorized-networks=35.187.232.75/32 --region=$REGION
 
-gcloud compute ssh --zone asia-southeast1-b gke-jumper-client --project cloud-native-workshop
+gcloud compute ssh --zone $ZONE gke-jumper-client --project cloud-native-workshop
 
 ## Connect from Peering
 ================================================
@@ -1964,17 +1986,17 @@ gcloud compute networks peerings create peer21 --network=gke-auto-cluster-vpc --
 # gcloud compute networks peerings delete peer21 --network=gke-auto-cluster-vpc
 
 gcloud compute instances create gke-jumper2-client --image-family=debian-10 --image-project=debian-cloud --tags=allow-ssh \
---network=gke-peer-vpc --subnet=gke-peer-subnet --zone=asia-southeast1-b
-# gcloud compute instances delete gke-jumper2-client --zone=asia-southeast1-b
+--network=gke-peer-vpc --subnet=gke-peer-subnet --zone=$ZONE
+# gcloud compute instances delete gke-jumper2-client --zone=$ZONE
 
 gcloud container clusters update gke-auto-private-cluster --enable-master-authorized-networks \
---master-authorized-networks=35.187.232.75/32,34.124.196.55/32 --region=asia-southeast1
+--master-authorized-networks=35.187.232.75/32,34.124.196.55/32 --region=$REGION
 
 gcloud compute firewall-rules create gke-allow-peer-ssh-rule --network=gke-peer-vpc --allow tcp:22 \
 --source-ranges=0.0.0.0/0
 # gcloud compute firewall-rules delete gke-allow-peer-ssh-rule
 
-gcloud compute ssh --zone asia-southeast1-b gke-jumper2-client --project cloud-native-workshop
+gcloud compute ssh --zone $ZONE gke-jumper2-client --project cloud-native-workshop
 
 ================================================================================================
 
@@ -1983,8 +2005,8 @@ Apigee X (Old Approach)
 
 AUTH="Authorization: Bearer $(gcloud auth print-access-token)"
 PROJECT_ID="cloud-native-workshop"
-RUNTIME_LOCATION="asia-southeast1"
-ANALYTICS_REGION="asia-southeast1"
+RUNTIME_LOCATION="$REGION"
+ANALYTICS_REGION="$REGION"
 
 echo $AUTH
 echo $PROJECT_ID
@@ -2030,7 +2052,7 @@ gcloud alpha apigee organizations provision \
 gcloud services peered-dns-domains create gke-internal-dns --network=gke-auto-cluster-vpc --service="servicenetworking.googleapis.com" \
 --dns-suffix=gkeauto.internal.gke.com
 
-gcloud compute ssh --zone asia-southeast1-b gke-jumper-client --project cloud-native-workshop
+gcloud compute ssh --zone $ZONE gke-jumper-client --project cloud-native-workshop
 
 sudo apt-get update -y
 sudo apt-get install -y jq
@@ -2073,20 +2095,20 @@ sudo corepack enable
 Let's Encrypt
 ===============
 certbot certificates
-certbot certonly -d *.wkshpdev.com --dry-run --preferred-challenges=dns --manual
-# certbot revoke --cert-name wkshpdev.com
-# certbot delete --cert-name wkshpdev.com
+certbot certonly -d *.kodemongers.com --dry-run --preferred-challenges=dns --manual
+# certbot revoke --cert-name kodemongers.com
+# certbot delete --cert-name kodemongers.com
 
-ln -s /Users/monojitd/Workloads/Development/Documents/DNS-Certs/wkshpdev.com \
+ln -s /Users/monojitd/Workloads/Development/Documents/DNS-Certs/kodemongers.com \
 /Users/monojitd/Workloads/Development/Projects/GithubProjects/Workshops/GCP-Workshop/Misc/Certs/
 
 
-certbot certonly -d *.<dns-name> --dry-run --preferred-challenges=dns --manual
-certbot certonly -d *.<dns-name> --preferred-challenges=dns --manual
-# certbot revoke --cert-name <dns-name>
-# certbot delete --cert-name <dns-name>
+certbot certonly -d *.<dns-name>.com --dry-run --preferred-challenges=dns --manual
+certbot certonly -d *.<dns-name>.com --preferred-challenges=dns --manual
+# certbot revoke --cert-name <dns-name>.com
+# certbot delete --cert-name <dns-name>.com
 
-ln -s /Users/monojitd/Workloads/Development/Documents/DNS-Certs/<dns-name> \
+ln -s /Users/monojitd/Workloads/Development/Documents/DNS-Certs/<dns-name>.com \
 /Users/monojitd/Workloads/Development/Projects/GithubProjects/Workshops/GCP-Workshop/Misc/Certs/
 
 openssl pkcs12 -export -out cert.pfx -in cert.pem -inkey privkey.pem
