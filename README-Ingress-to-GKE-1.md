@@ -321,8 +321,8 @@ Let us prepare the environment first even before creating the GKE cluster
           version: "1.0"
       spec:
         containers:
-        - name: apacheapp 
-  	      image: "docker.io/library/httpd:latest"        
+        - name: apacheapp
+        	image: "docker.io/library/httpd:latest"        
           resources:
             requests:
               cpu: "100m"
@@ -376,7 +376,7 @@ Let us prepare the environment first even before creating the GKE cluster
       spec:
         containers:
         - name: nginxapp
-          image: "docker.io/library/nginx:latest"
+        	image: "docker.io/library/nginx:latest"
           resources:
             requests:
               cpu: "100m"
