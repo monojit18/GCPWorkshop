@@ -13,6 +13,7 @@ There are multiple ways to securely connect to backend micro services deployed i
 - No need for the extra hop introduced by **kube-proxy** in the case of traditional LB process
 - Improved **latency** and **throughput**
 - Better **observability** and **troubleshooting** capability;users can have deep visibility into the issues at the POD level
+- A cost Effective, Secured and Performant way to connect to GKE cluster
 
 ## How does it work with GKE?
 
@@ -52,7 +53,9 @@ Following are the steps we would follow as we move on:
   >
   >   [GKE-Ingreess](https://cloud.google.com/kubernetes-engine/docs/concepts/ingress)
 
-- Create a **Global or Regional HTTP(S) Load Balancer (Layer 7)** that would connect to the NEG enpoint which in-turn send traffic to the PODs onto the GKE cluster
+- Offload SSL at the Nginx Ingress layer within the cluster
+
+- Create a ***Global or Regional* HTTP(S) Load Balancer (Layer 7)** that would connect to the **NEG enpoints** which in-turn send traffic to the PODs within the GKE cluster
 
 - Test the Application flow end-to-end using **Postman**
 
@@ -266,8 +269,6 @@ Let us prepare the environment first even before creating the GKE cluster
   kubectl create secret tls gke-ingress-cert --cert="./<ceet-name>.pem" --key="./<private-key>.pem"
   ```
 
-  
-
 - Create Configuration file for **Nginx Ingress controller**
 
   - Name it as - **internal-nginx-ingress-config.yaml**
@@ -284,7 +285,7 @@ Let us prepare the environment first even before creating the GKE cluster
   > __NOTE__
   >
   > - **type** - Type is **ClusterIP** isnread of *LoadBalancer*. This makes Ingress controller eployed as a K8s Service only
-  > - **cloud.google.com/neg** - This annotation requests for NEG to be created automatically as part of the Ingress service deployment and with a specified name
+  > - **cloud.google.com/neg** - This annotation requests for [Standalone Zonal NEGs](https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg) to be created automatically as part of the Ingress service deployment and with a specified name
   > - **replicaCount**: 3 replicas of the Ingress controller is requested; this implies 3 Nginx Ingress PODs and hence 3 instances of NEGs would be created; each mapped to one POD instance
 
 - Deploy **Nginx Ingress controller**
@@ -298,6 +299,8 @@ Let us prepare the environment first even before creating the GKE cluster
   #Install or Upgrade helm packag of Nginx ingress controller
   helm upgrade --install -f ./internal-nginx-ingress-config.yaml nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
   ```
+
+
 
 
 ### Deploy Microservices
@@ -459,7 +462,7 @@ Let us prepare the environment first even before creating the GKE cluster
     kubectl apply -f ./nginxapp-deploy.yaml
     ```
   
-- Check the NEGs created
+- Check the **NEGs** are created
 
   ```bash
   gcloud compute network-endpoint-groups list
@@ -467,15 +470,17 @@ Let us prepare the environment first even before creating the GKE cluster
   
   > **TIP**
   >
-  > - 3 replicas for Nginx Ingress controller POD would result in 3 NEGs
+  > - 3 replicas for Nginx Ingress controller POD would result in 3 *Standalone Zonal NEGs*
   > - Note down the NEG names - which in this case would be like - *ingress-nginx-443-neg-XXX*
-  > - Each NEG would be added as a backend to the Global HTTP(S) LB, which we would be creating below
+  > - Each Zonal NEG would be added as a backend to the Global HTTP(S) LB, which we would be creating below
+
+
 
 ### Deploy Global HTTP(S) Load Balancer - Option 1
 
 - Refer **2** and **2a** in the main architecture diagram
 
-- Setup environment variables
+- Setup **Environment** variables
 
   ```bash
   NEG1_NAME="<neg1-name>"
@@ -489,7 +494,7 @@ Let us prepare the environment first even before creating the GKE cluster
   CERTIFICATE="gke-glb-cert"
   ```
   
-- Create Global SSL certificate in GCP
+- Create **Global SSL certificate** in GCP
 
   ```bash
   gcloud compute ssl-certificates create $CERTIFICATE \
@@ -547,7 +552,6 @@ Let us prepare the environment first even before creating the GKE cluster
 
   ```bash
   curl -i -k https://apacheapp.<dns-name>.com/apache
-  
   curl -i -k https://apacheapp.<dns-name>.com/nginx
   
   #The endpoints can be tested from POSTMAN or Web browser also
@@ -559,7 +563,7 @@ Let us prepare the environment first even before creating the GKE cluster
 
 ### Deploy Regional HTTP(S) Load Balancer - Option 2
 
-- Setup environment variables
+- Setup **Environment** variables
 
   ```bash
   NEG1_NAME="<neg1-name>"
@@ -574,7 +578,7 @@ Let us prepare the environment first even before creating the GKE cluster
   CERTIFICATE="gke-reg-cert"
   ```
 
-- Create Regional SSL certificate in GCP
+- Create **Regional SSL certificate** in GCP
 
   ```bash
   gcloud compute ssl-certificates create $CERTIFICATE \
@@ -582,7 +586,7 @@ Let us prepare the environment first even before creating the GKE cluster
    --region=$REGION
   ```
 
-- Create Health check for the Regional LB backend
+- Create **Health check** for the Regional LB backend
 
   ```bash
   gcloud compute health-checks create https $HEALTH_CHECK_NAME \
@@ -590,7 +594,7 @@ Let us prepare the environment first even before creating the GKE cluster
   --request-path='/healthz' --region=$REGION
   ```
 
-- Create a Regional External HTTP(S) LB
+- Create a **Regional External HTTP(S) LB**
 
   ```bash
   gcloud compute addresses create $ADDRESS_NAME --ip-version=IPV4 --region=$REGION --project=$PROJECT_NAME
@@ -647,7 +651,6 @@ Let us prepare the environment first even before creating the GKE cluster
 
   ```bash
   curl -i -k https://apacheapp.<dns-name>.com/apache
-  
   curl -i -k https://apacheapp.<dns-name>.com/nginx
   
   #The endpoints can be tested from POSTMAN or Web browser also
@@ -657,12 +660,10 @@ Let us prepare the environment first even before creating the GKE cluster
 
 ### Conclusion
 
-This end to end application flow depicts how [TBD]
+This document tried to depict how Secure, Cost Effective and Performant way microservice backends residing within a GKE cluster can be exposed to the consumers.
 
 ## References
 
 - [Source Code](https://github.com/monojit18/GCPWorkshop.git) at Github
-
 - [GKE Regional cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-a-regional-cluster#gcloud-init)
-
-- 
+- [Container Native LB](https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg)
