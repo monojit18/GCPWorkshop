@@ -164,7 +164,7 @@ Let us prepare the environment first even before creating the GKE cluster
   --action=allow --direction=ingress --source-ranges=10.0.7.0/24 --rules=tcp:80,tcp:443,tcp:8443,tcp:8080
   ```
 
-- Private GKE cluster would have all outbound connections blocked by default. To enable this we need a NAT gateway to be associated with the GKE cluster subnet
+- Private **GKE cluster** would have all outbound connections blocked by default. To enable this we need a **NAT gateway** to be associated with the *GKE cluster subnet*
 
   ```bash
   gcloud compute addresses create $REGION-nat-ip --region=$REGION
@@ -259,12 +259,22 @@ Let us prepare the environment first even before creating the GKE cluster
   gcloud container clusters get-credentials $CLUSTER --region=$REGION --project=$PROJECT_NAME
   ```
 
+- Create K8s secret to hold the SSL Certificate details
+
+  ```bash
+  #Assuming the Certificate and Private Key PEM files are stored in the currrent directory
+  kubectl create secret tls gke-ingress-cert --cert="./<ceet-name>.pem" --key="./<private-key>.pem"
+  ```
+
+  
+
 - Create Configuration file for **Nginx Ingress controller**
 
   - Name it as - **internal-nginx-ingress-config.yaml**
 
   ```yaml
   controller:
+  	replicaCount: 3
     service:
         type: ClusterIP      
         annotations:        
@@ -274,7 +284,8 @@ Let us prepare the environment first even before creating the GKE cluster
   > __NOTE__
   >
   > - **type** - Type is **ClusterIP** isnread of *LoadBalancer*. This makes Ingress controller eployed as a K8s Service only
-  > - **cloud.google.com/neg** - This annotation dictates
+  > - **cloud.google.com/neg** - This annotation requests for NEG to be created automatically as part of the Ingress service deployment and with a specified name
+  > - **replicaCount**: 3 replicas of the Ingress controller is requested; this implies 3 Nginx Ingress PODs and hence 3 instances of NEGs would be created; each mapped to one POD instance
 
 - Deploy **Nginx Ingress controller**
 
@@ -303,7 +314,11 @@ Let us prepare the environment first even before creating the GKE cluster
     annotations:
       kubernetes.io/ingress.class: nginx    
       nginx.ingress.kubernetes.io/rewrite-target: /$1      
-  spec:	
+  spec:
+  	tls:
+    - hosts:
+      - "*.<dns-name>"
+      secretName: gke-ingress-cert
     rules:
     - host: "apacheapp.<dns-name>"
       http:
@@ -443,65 +458,48 @@ Let us prepare the environment first even before creating the GKE cluster
     ```bash
     kubectl apply -f ./nginxapp-deploy.yaml
     ```
+  
+- Check the NEGs created
 
-### Deploy External Load Balancer
+  ```bash
+  gcloud compute network-endpoint-groups list
+  ```
+  
+  > **TIP**
+  >
+  > - 3 replicas for Nginx Ingress controller POD would result in 3 NEGs
+  > - Note down the NEG names - which in this case would be like - *ingress-nginx-443-neg-XXX*
+  > - Each NEG would be added as a backend to the Global HTTP(S) LB, which we would be creating below
+
+### Deploy Global HTTP(S) Load Balancer - Option 1
 
 - Refer **2** and **2a** in the main architecture diagram
-
-- Retrieve **Service Attachment** of the Apigee endpoint. Refer  **2b** in the main architecture diagram
-
-  ```bash
-  #Option1: Following lists all the organizations and their details.Find the value of the field named - service-attachment
-  gcloud alpha apigee organizations list
-  
-  #Option2: Call Apigee REST API to get JSON response with Org details.Find the value of the field named - service-attachment
-  curl -H "$AUTH" \
-    "https://apigee.googleapis.com/v1/organizations/$PROJECT_NAME/envgroups/eval-group/attachments"
-  
-  ```
-
-- Create SSL certificate in GCP
-
-  ```bash
-  gcloud compute ssl-certificates create cloud-lb-cert --certificate=<cert-name>.pem \
-  --private-key=<private-key>.pem
-  ```
 
 - Setup environment variables
 
   ```bash
-  NEG_NAME="apigee-lb-neg"
-  TARGET_SERVICE="<service-attachment field value from above section>"
-  RUNTIME_LOCATION="$REGION"
-  ANALYTICS_REGION="$REGION"
-  NETWORK_NAME="$VPC_NAME"
-  SUBNET_NAME="$PSC_SUBNET_NAME"
-  PROJECT_ID="$PROJECT_NAME"
-  ADDRESS_NAME="apigee-lb-address"
-  BACKEND_SERVICE_NAME="apigee-bkend-service"
-  URL_MAP_NAME="apigee-bkend-url-map"
-  PROXY_NAME="apigee-bkend-proxy"
-  FWD_RULE="apigee-fwd-rule"
-  CERTIFICATE="cloud-lb-cert"
+  NEG1_NAME="<neg1-name>"
+  NEG2_NAME="<neg2-name>"
+  NEG3_NAME="<neg3-name>"
+  ADDRESS_NAME="gke-glb-ip"
+  BACKEND_SERVICE_NAME="gke-glb-bkend"
+  URL_MAP_NAME="gke-glb-urlmap"
+  PROXY_NAME="gke-glb-https-proxy"
+  FWD_RULE="gke-glb-fwd-rule"
+  CERTIFICATE="gke-glb-cert"
   ```
-
-- Create Network Endpoint Group (NEG). Refer **2a** in the main architecture diagram
+  
+- Create Global SSL certificate in GCP
 
   ```bash
-  gcloud compute network-endpoint-groups create $NEG_NAME \
-    --network-endpoint-type=private-service-connect \
-    --psc-target-service=$TARGET_SERVICE \
-    --region=$RUNTIME_LOCATION \
-    --network=$NETWORK_NAME \
-    --subnet=$SUBNET_NAME \
-    --project=$PROJECT_NAME
+  gcloud compute ssl-certificates create $CERTIFICATE \
+  --certificate=<cert-name>.pem --private-key=<private-key>.pem
   ```
-
+  
 - Create a Global External HTTP(S) LB
 
   ```bash
   gcloud compute addresses create $ADDRESS_NAME --ip-version=IPV4 --global --project=$PROJECT_NAME
-  
   gcloud compute addresses describe $ADDRESS_NAME --format="get(address)" --global --project=$PROJECT_NAME
   
   gcloud compute backend-services create $BACKEND_SERVICE_NAME \
@@ -510,8 +508,18 @@ Let us prepare the environment first even before creating the GKE cluster
     --global --project=$PROJECT_NAME
   
   gcloud compute backend-services add-backend $BACKEND_SERVICE_NAME \
-    --network-endpoint-group=$NEG_NAME \
-    --network-endpoint-group-region=$RUNTIME_LOCATION \
+    --network-endpoint-group=$NEG1_NAME \
+    --network-endpoint-group-region=$REGION \
+    --global --project=$PROJECT_NAME
+    
+  gcloud compute backend-services add-backend $BACKEND_SERVICE_NAME \
+    --network-endpoint-group=$NEG2_NAME \
+    --network-endpoint-group-region=$REGION \
+    --global --project=$PROJECT_NAME
+    
+  gcloud compute backend-services add-backend $BACKEND_SERVICE_NAME \
+    --network-endpoint-group=$NEG3_NAME \
+    --network-endpoint-group-region=$REGION \
     --global --project=$PROJECT_NAME
   
   gcloud compute url-maps create $URL_MAP_NAME \
@@ -547,19 +555,105 @@ Let us prepare the environment first even before creating the GKE cluster
    https://apacheapp.<dns-name>.com/nginx
   ```
 
-- Additional observations through Apigee UI
 
-  ![apigee-proxy-perf1](./Assets/apigee-proxy-perf1.png)
 
-  ![apigee-proxy-perf2](./Assets/apigee-proxy-perf2.png)
+### Deploy Regional HTTP(S) Load Balancer - Option 2
 
-  ![apigee-proxy-latency1](./Assets/apigee-proxy-latency1.png)
+- Setup environment variables
 
-  ![apigee-proxy-latency1](./Assets/apigee-proxy-latency2.png)
+  ```bash
+  NEG1_NAME="<neg1-name>"
+  NEG2_NAME="<neg2-name>"
+  NEG3_NAME="<neg3-name>"
+  ADDRESS_NAME="gke-reg-ip"
+  BACKEND_SERVICE_NAME="gke-reg-bkend"
+  HEALTH_CHECK_NAME="gke-reg-hc"
+  URL_MAP_NAME="gke-reg-urlmap"
+  PROXY_NAME="gke-reg-https-proxy"
+  FWD_RULE="gke-reg-fwd-rule"
+  CERTIFICATE="gke-reg-cert"
+  ```
 
-  ![apigee-proxy-latency1](./Assets/apigee-proxy-latency1.png)
+- Create Regional SSL certificate in GCP
 
-  ![apigee-proxy-latency1](./Assets/apigee-proxy-latency2.png)
+  ```bash
+  gcloud compute ssl-certificates create $CERTIFICATE \
+  --certificate=<cert-name>.pem --private-key=<private-key>.pem \
+   --region=$REGION
+  ```
+
+- Create Health check for the Regional LB backend
+
+  ```bash
+  gcloud compute health-checks create https $HEALTH_CHECK_NAME \
+  --use-serving-port --port=443 \
+  --request-path='/healthz' --region=$REGION
+  ```
+
+- Create a Regional External HTTP(S) LB
+
+  ```bash
+  gcloud compute addresses create $ADDRESS_NAME --ip-version=IPV4 --region=$REGION --project=$PROJECT_NAME
+  gcloud compute addresses describe $ADDRESS_NAME --format="get(address)" --region=$REGION \
+  --project=$PROJECT_NAME
+  
+  gcloud compute backend-services create $BACKEND_SERVICE_NAME \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --protocol=HTTPS \
+    --health-checks=$HEALTH_CHECK_NAME \
+    --region=$REGION
+    
+  gcloud compute backend-services add-backend $BACKEND_SERVICE_NAME \
+  --balancing-mode=UTILIZATION \
+  --network-endpoint-group=$NEG1_NAME \
+  --network-endpoint-group-region=$REGION \
+  --region=$REGION --project=$PROJECT_NAME
+  
+  gcloud compute backend-services add-backend $BACKEND_SERVICE_NAME \
+  --balancing-mode=UTILIZATION \
+  --network-endpoint-group=$NEG2_NAME \
+  --network-endpoint-group-region=$REGION \
+  --region=$REGION --project=$PROJECT_NAME
+  
+  gcloud compute backend-services add-backend $BACKEND_SERVICE_NAME \
+  --balancing-mode=UTILIZATION \
+  --network-endpoint-group=$NEG3_NAME \
+  --network-endpoint-group-region=$REGION \
+  --region=$REGION --project=$PROJECT_NAME
+  
+  gcloud compute url-maps create $URL_MAP_NAME \
+    --default-service=$BACKEND_SERVICE_NAME \
+    --region=$REGION --project=$PROJECT_NAME
+  
+  gcloud compute ssl-certificates describe $CERTIFICATE \
+     --region=$REGION \
+     --format="get(name,managed.status, managed.Status)"
+  
+  gcloud compute target-https-proxies create $PROXY_NAME \
+    --url-map=$URL_MAP_NAME \
+    --ssl-certificates=$CERTIFICATE \
+    --region=$REGION --project=$PROJECT_NAME
+  
+  gcloud compute forwarding-rules create $FWD_RULE \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=STANDARD \
+  --address=$ADDRESS_NAME \
+  --target-https-proxy=$PROXY_NAME \
+  --ports=443 \
+  --region=$REGION --project=$PROJECT_NAME
+  ```
+
+- Test service endpoints end to end
+
+  ```bash
+  curl -i -k https://apacheapp.<dns-name>.com/apache
+  
+  curl -i -k https://apacheapp.<dns-name>.com/nginx
+  
+  #The endpoints can be tested from POSTMAN or Web browser also
+   https://apacheapp.<dns-name>.com/apache
+   https://apacheapp.<dns-name>.com/nginx
+  ```
 
 ### Conclusion
 
