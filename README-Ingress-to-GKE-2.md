@@ -6,18 +6,18 @@ There are multiple ways to securely connect to backend micro services deployed i
 
 ## What is Container Native Load Balancing?
 
-![neg-overview](./Assets/neg-overview.svg)
+![neg-overview](./Assets/neg-overview.png)
 
 - The diagram depicts a comparison between traditional LB and Container-Native LB (*right hand side*)
 - Traffic distributed to PODs directly
 - No need for the extra hop introduced by **kube-proxy** in the case of traditional LB process
 - Improved **latency** and **throughput**
-- Better **observability** and **troubleshooting** capability;users can have deep visibility into the issues at the POD level
+- Better **observability** and **troubleshooting** capability; users can have deep visibility into the issues at the POD level
 - A cost Effective, Secured and Performant way to connect to GKE cluster
 
 ## How does it work with GKE?
 
-![sneg1](./Assets/sneg1.svg)
+![sneg1](./Assets/sneg1.png)
 
 - A [NEG](https://cloud.google.com/load-balancing/docs/negs) represents a group of endpoints. In this case it is a group of POD IPs
 
@@ -31,7 +31,7 @@ There are multiple ways to securely connect to backend micro services deployed i
 
 - All calls from outside the GKE cluster will be distributed to the PODs directly
 
-  ![sneg3](./Assets/sneg3.svg)
+  ![sneg3](./Assets/sneg3.png)
 
 ## Steps to build this
 
@@ -41,7 +41,7 @@ Following are the steps we would follow as we move on:
 
 - Create a basic **Regional GKE Cluster**. We will create this as a **Private** cluster; but all discussions hold good for a **Public** cluster as well
 
-- Deploy couple of simple microservices onto the GKE cluster
+- Deploy couple of simple micro-services onto the GKE cluster
 
 - Deploy **Nginx Ingress Controller** as a **K8s Service** onto the GKE cluster. Configure the service to create an NEG onto GCP
 
@@ -49,9 +49,9 @@ Following are the steps we would follow as we move on:
   >
   > - Creating Ingress controller as a **K8s Service** is the key
   >
-  > - This document uses Nginx as Ingress controller; but this would work with any other Ingress controller also viz.
+  > - This document uses Nginx as Ingress controller; but this would work with any other Ingress controller also viz. 
   >
-  >   [GKE-Ingreess](https://cloud.google.com/kubernetes-engine/docs/concepts/ingress)
+  >   [GKE-Ingress](https://cloud.google.com/kubernetes-engine/docs/concepts/ingress)
 
 - Offload SSL at the Nginx Ingress layer within the cluster
 
@@ -167,9 +167,11 @@ Let us prepare the environment first even before creating the GKE cluster
   --action=allow --direction=ingress --source-ranges=10.0.7.0/24 --rules=tcp:80,tcp:443,tcp:8443,tcp:8080
   ```
 
-- Private **GKE cluster** would have all outbound connections blocked by default. To enable this we need a **NAT gateway** to be associated with the *GKE cluster subnet*
+- Create **NAT Gateway**
 
   ```bash
+  #Private GKE cluster would have all outbound connections blocked by default. To enable this we need a NAT gateway to be associated with the GKE cluster subnet
+  
   gcloud compute addresses create $REGION-nat-ip --region=$REGION
   gcloud compute routers create rtr-$REGION --network=$VPC_NAME --region=$REGION
   
@@ -177,9 +179,10 @@ Let us prepare the environment first even before creating the GKE cluster
   --nat-external-ip-pool=$REGION-nat-ip --nat-all-subnet-ip-ranges --enable-logging
   ```
   
-- Setup a **Jump Server VM**. This will be designated as the only source for accessing the Private GKE cluster
+- Setup a **Jump Server VM**
 
   ```bash
+  #This will be designated as the only source for accessing the Private GKE cluster
   gcloud compute addresses create gke-jump-server-ip --region=$REGION
   JUMPSERERIP=$(gcloud compute addresses describe gke-jump-server-ip --format="get(address)")
   
@@ -262,7 +265,7 @@ Let us prepare the environment first even before creating the GKE cluster
   gcloud container clusters get-credentials $CLUSTER --region=$REGION --project=$PROJECT_NAME
   ```
 
-- Create K8s secret to hold the SSL Certificate details
+- Create **K8s secret** to hold the SSL Certificate details
 
   ```bash
   #Assuming the Certificate and Private Key PEM files are stored in the currrent directory
@@ -299,8 +302,6 @@ Let us prepare the environment first even before creating the GKE cluster
   #Install or Upgrade helm packag of Nginx ingress controller
   helm upgrade --install -f ./internal-nginx-ingress-config.yaml nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
   ```
-
-
 
 
 ### Deploy Microservices
@@ -400,15 +401,14 @@ Let us prepare the environment first even before creating the GKE cluster
       app: apacheapp-pod
   		version: "1.0"
     type: ClusterIP
-  
   ```
-
+  
   - Deploy **apacheapp-deploy.yaml**
-
+  
     ```bash
     kubectl apply -f ./apacheapp-deploy.yaml
     ```
-
+  
 - Create a deployment file **nginxapp-deploy.yaml**
 
   ```yaml
@@ -474,8 +474,6 @@ Let us prepare the environment first even before creating the GKE cluster
   > - Note down the NEG names - which in this case would be like - *ingress-nginx-443-neg-XXX*
   > - Each Zonal NEG would be added as a backend to the Global HTTP(S) LB, which we would be creating below
 
-
-
 ### Deploy Global HTTP(S) Load Balancer - Option 1
 
 - Refer **2** and **2a** in the main architecture diagram
@@ -501,7 +499,7 @@ Let us prepare the environment first even before creating the GKE cluster
   --certificate=<cert-name>.pem --private-key=<private-key>.pem
   ```
   
-- Create a Global External HTTP(S) LB
+- Create a **Global External HTTP(S) LB**
 
   ```bash
   gcloud compute addresses create $ADDRESS_NAME --ip-version=IPV4 --global --project=$PROJECT_NAME
@@ -558,8 +556,6 @@ Let us prepare the environment first even before creating the GKE cluster
    https://apacheapp.<dns-name>.com/apache
    https://apacheapp.<dns-name>.com/nginx
   ```
-
-
 
 ### Deploy Regional HTTP(S) Load Balancer - Option 2
 
@@ -660,7 +656,7 @@ Let us prepare the environment first even before creating the GKE cluster
 
 ### Conclusion
 
-This document tried to depict how Secure, Cost Effective and Performant way microservice backends residing within a GKE cluster can be exposed to the consumers.
+This document tried to depict how micro-service backends residing within a GKE cluster can be exposed to the consumers in a Secure, Cost Effective and Performant way.
 
 ## References
 
