@@ -656,7 +656,7 @@ Let us prepare the environment first even before creating the GKE cluster
 
 ### Conclusion
 
-This document tried to depict how micro-service backends residing within a GKE cluster can be exposed to the consumers in a Secure, Cost Effective and Performant way.
+This document tried to depict how micro-service backends residing within a GKE cluster can be exposed to the consumers in a Secure, Cost Effective and Performant way
 
 ## References
 
