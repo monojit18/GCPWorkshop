@@ -22,7 +22,7 @@ This document focuses on the middle one i.e. how to use Private Service Connect 
 
 The key components to achieve this end-to-end would be as following:
 
-- [Internal HTTP(S) LB](https://cloud.google.com/load-balancing/docs/l7-internal)
+- [Internal TCP/UDP LB](https://cloud.google.com/load-balancing/docs/internal)
 - [Service Attachments](https://cloud.google.com/sdk/gcloud/reference/beta/compute/service-attachments/create)
 - [Network Endpoint Groups](https://cloud.google.com/load-balancing/docs/negs)
 - [External HTTP(S) LB](https://cloud.google.com/load-balancing/docs/https)
@@ -33,7 +33,7 @@ Following are the steps we would follow as we move on:
 
 - Create required Infrastructure
 
-- Create a  **private Regional GKE Cluster**; but all steps hold good for a Public cluster also
+- Create a **private Regional GKE Cluster**; but all steps hold good for a Public cluster also
 
 - Deploy couple of simple microservices onto the GKE cluster
 
@@ -80,6 +80,8 @@ Let us prepare the environment first even before creating the GKE cluster
   CLUSTER_SUBNET_NAME="gke-cluster-subnet"
   PROXY_SUBNET_NAME="gke-proxy-only-subnet"
   PSC_SUBNET_NAME="gke-psc-subnet"
+  INGRESS_SERVICE_ATTACHMENT="gke-service-attachment"
+  NEG_NAME="gke-service-neg"
   JUMP_SERVER_SUBNET_NAME="jumper-server-subnet"
   ```
 
@@ -212,21 +214,38 @@ Let us prepare the environment first even before creating the GKE cluster
 
 - Refer **3** and **3b**  in the above diagram
 
-- Create a public **GKE cluster**
+- Create a  **Private GKE cluster**
 
   ```bash
-  gcloud container clusters create $CLUSTER --release-channel=regular --region=$REGION \
-  --enable-ip-alias --enable-autoscaling \
-  --num-nodes=1 --min-nodes=1 --max-nodes=3 --max-pods-per-node=40 \
-  --network=$VPC_NAME --subnetwork=$CLUSTER_SUBNET_NAME \
+  gcloud container clusters create $CLUSTER --release-channel=regular \
+  --region=$REGION --num-nodes=1 --enable-ip-alias \
+  --enable-master-authorized-networks --network=$VPC_NAME --subnetwork=$CLUSTER_SUBNET_NAME \
   --cluster-secondary-range-name=pods-range --services-secondary-range-name=services-range \
-  --service-account=$GSA --workload-pool=$PROJECT_NAME.svc.id.goog
+  --enable-master-authorized-networks --enable-private-nodes --enable-private-endpoint \
+  --service-account=$GSA --workload-pool=$PROJECT_NAME.svc.id.goog \
+  --master-authorized-networks=$JUMPSERERIP/32 --master-ipv4-cidr=10.0.6.0/28
   ```
+
+  > __NOTE__
+  >
+  > - **--master-authorized-networks** - Defines the CIDR ranges from which only the cluster can be accessed. **$JUMPSERERIP/32** ensures that only the Jump Server VM can access the private GKE cluster
+  > - **--master-ipv4-cidr** - Defines the CIDR range for the Master Nodes for the private GKE cluster
 
 - Connect to the **GKE cluster**
 
   ```bash
+  #Connect to the Jump server VM from local machine or cloud shell
+  gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_NAME
+  
+  #Connect to the GKE cluster from Jump Server VM
   gcloud container clusters get-credentials $CLUSTER --region=$REGION --project=$PROJECT_NAME
+  ```
+
+- Create **K8s secret** to hold the SSL Certificate details
+
+  ```bash
+  #Assuming the Certificate and Private Key PEM files are stored in the currrent directory
+  kubectl create secret tls gke-ingress-cert --cert="./<ceet-name>.pem" --key="./<private-key>.pem"
   ```
 
 - Create Configuration file for **Nginx Ingress controller**
@@ -255,39 +274,6 @@ Let us prepare the environment first even before creating the GKE cluster
   helm upgrade --install -f ./internal-nginx-ingress-config.yaml nginx-ingress ingress-nginx/ingress-nginx -n nginx-ingress-ns --create-namespace
   ```
   
-
-### Deploy a Private DNS Zone
-
-- The Private DNS Zone will beused to resolve Private IP addresses used by various resources in the projec.
-
-- The Privaye IP of the Internal LB created above would be resolved using this Private DNS Zone
-
-- If one such zone already exists then we can use it as-is; otherwise:
-
-  - Create a **Private DNS Zone** on GCP
-
-    ```bash
-    gcloud dns managed-zones create $PROJECT_NAME-zone --dns-name internal.spoke.com. \
-    --visibility=private --networks=$VPC_NAME --description="Private Zone"
-    ```
-
-- Add **A-record** for each microservcies (*to be deployed later*)
-
-  ```bash
-  gcloud dns record-sets create apacheapp.internal.spoke.com. --rrdatas=10.0.0.100 --type=A --ttl=60 \
-  --zone=$PROJECT_NAME-zone
-  
-  gcloud dns record-sets create nginxapp.internal.spoke.com. --rrdatas=10.0.0.100 --type=A --ttl=60 \
-  --zone=$PROJECT_NAME-zone
-  ```
-
-  > **NOTE**
-  >
-  > - The Private IP of the Internal LB is **10.0.0.100** in this case
-  >
-  > - All microservices are behind the Internal LB; hence DNS A-record for each service should be mapped to the same IP
-  >
-  >   i.e. **10.0.0.100**
 
 ### Deploy Microservices
 
@@ -444,123 +430,60 @@ Let us prepare the environment first even before creating the GKE cluster
     kubectl apply -f ./nginxapp-deploy.yaml
     ```
 
-### Deploy Apigee X
+Test the services from **Jump server VM**
 
-- Refer **2b** in the above diagram
+```bash
+#Connect to the Jump server VM from local machine or cloud shell
+gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_NAME
 
-- Enable **Apigee service** for the project
+curl -i -k https://apacheapp.<dns-name>.com/apache
+curl -i -k https://apacheapp.<dns-name>.com/nginx
+```
 
-  ```bash
-  gcloud services enable apigee.googleapis.com servicenetworking.googleapis.com --project=$PROJECT_NAME
-  ```
+> **NOTE**
+>
+> - This document does SSL OffLoading at the Ingress layer within the GKE cluster
 
-- Create **Subnets** for **Apigee**
+### Expose backend using Service Attachments
 
-  ```bash
-  #Requied by Apigee - a non-overlapping CIDR range of /22
-  gcloud compute networks subnets create gke-apigee-subnet --network=$VPC_NAME --range=10.0.7.0/22
-  
-  #Apigee also requires a non-overlapping, available /28 CIDR range - used by Apigee to access the instance for troubleshooting purposes and cannot be customized or changed
-  gcloud compute networks subnets create gke-apigee-troublesdhoot-subnet --network=$VPC_NAME \
-  --range=10.0.12.0/28
-  ```
-
-- Prepare environment for **Apigee** deployment
+- Retrieve the **Forwarding Rule** of the Internal LB
 
   ```bash
-  APIGEE_RANGE_NAME=apigeex-svcs
-  APIGEE_MANAGED_RANGE_NAME=apigeex-managed-svcs
-  NETWORK_NAME=$VPC_NAME
-  
-  gcloud compute addresses create $APIGEE_RANGE_NAME \
-    --global \
-    --prefix-length=22 \
-    --network=$NETWORK_NAME --purpose=VPC_PEERING --project=$PROJECT_NAME
-  
-  gcloud compute addresses create $APIGEE_MANAGED_RANGE_NAME \
-    --global \
-    --prefix-length=28 \
-    --network=$NETWORK_NAME --purpose=VPC_PEERING --project=$PROJECT_NAME
+  gcloud compute forwarding-rules list
   ```
 
-- Create **VPC peering** between VPC of the current project and the VPC of the Apigee project
+  > **TIP**
+  >
+  > - Please note the Forwarding rule for the Internal LB
+  > - This can alos be easily found out from the GCP Console UI
+
+- Create **Service Attachment**
+
+  - Refer **2b**  in the above diagram
 
   ```bash
-  gcloud services vpc-peerings connect \
-    --service=servicenetworking.googleapis.com \
-    --network=$NETWORK_NAME --ranges=$APIGEE_RANGE_NAME,$APIGEE_MANAGED_RANGE_NAME --project=$PROJECT_NAME
+  gcloud compute service-attachments create $INGRESS_SERVICE_ATTACHMENT --region=$REGION \
+  --producer-forwarding-rule=<forwarding-rule> --connection-preference=ACCEPT_AUTOMATIC \
+  --nat-subnets=$PSC_SUBNET_NAME
   ```
 
-- Deploy **Apigee X**
+- Create  **Network Endpoint Group** of type *Private Service Connect*
+
+  - Refer **2a**  in the above diagram
 
   ```bash
-  gcloud alpha apigee organizations provision \
-    --runtime-location=$RUNTIME_LOCATION \
-    --analytics-region=$ANALYTICS_REGION \
-    --authorized-network=$NETWORK_NAME --project=$PROJECT_NAME
+  gcloud compute network-endpoint-groups create $NEG_NAME \
+    --network-endpoint-type=private-service-connect \
+    --psc-target-service=$(gcloud compute service-attachments describe ${INGRESS_SERVICE_ATTACHMENT} \
+    --region=$REGION --format="get(selfLink)") \
+     --network=$VPC_NAME \
+    --subnet=$PSC_SUBNET_NAME \
+    --region=$REGION
   ```
-
-  - This creates an Apigee [Eval org](https://cloud.google.com/apigee/docs/api-platform/get-started/eval-orgs) 
-  - It normally takes around 45 mins. to deploy Apigee
-
-- Configure **Apigee X**
-
-  - Once the Eval org is created, move to GCP console and access Apigee X menu
-
-    ![apigee-eval](./Assets/apigee-eval.png)
-
-  - Create Proxies for each Microservice
-
-    ![apigee-hello](./Assets/apigee-hello.png)
-
-    ![apigee-nginx](./Assets/apigee-nginx.png)
-
-    > **NOTE**
-    >
-    > - The **Target Endpoint** should point to the internal DNS name for each service; viz. *apacheapp.internal.spoke.com* or *nginxapp.internal.spoke.com*
-    >
-    > - The **Proxy Endpoint** should map to the Prefix in the **nginx-ingress.yaml** file or each miroservice; e.g. */nginx* or */apache**
-    >
-    >   [*The target and proxy endpoints shown in the figure is just for an example*]
-
-  - Test the services through Apigee endpoint
-
-    ```bash
-    AUTH="Authorization: Bearer $(gcloud auth print-access-token)"
-    
-    ENV_GROUP_HOSTNAME=$(curl -H "$AUTH" https://apigee.googleapis.com/v1/organizations/$PROJECT_NAME	/envgroups -s | jq -r '.environmentGroups[0].hostnames[0]')
-    
-    INTERNAL_LOAD_BALANCER_IP=$(curl -H "$AUTH" https://apigee.googleapis.com/v1/organizations/$PROJECT_NAME/instances -s | jq -r '.instances[0].host')
-    
-    echo $AUTH
-    echo $PROJECT_ID
-    echo $ENV_GROUP_HOSTNAME
-    echo $INTERNAL_LOAD_BALANCER_IP
-    
-    curl -i -k -H "Host: $ENV_GROUP_HOSTNAME" https://$INTERNAL_LOAD_BALANCER_IP/apache
-    curl -i -k -H "Host: $ENV_GROUP_HOSTNAME" https://$INTERNAL_LOAD_BALANCER_IP/nginx
-    ```
-
-    > **NOTE**
-    >
-    > - This document does SSL OffLoading at the Apigee X. [Refer](https://cloud.google.com/apigee/docs/api-platform/system-administration/options-configuring-tls)
 
 ### Deploy External Load Balancer
 
-- Refer **2** and **2a** in the main architecture diagram
-
-- Retrieve **Service Attachment** of the Apigee endpoint
-
-  ```bash
-  #Refer 2b in the main architecture diagram
-  #Option1: Following lists all the organizations and their details.Find the value of the field named - service-attachment
-  gcloud alpha apigee organizations list
-  
-  #Option2: Call Apigee REST API to get JSON response with Org details.Find the value of the field named - service-attachment
-  curl -H "$AUTH" \
-    "https://apigee.googleapis.com/v1/organizations/$PROJECT_NAME/envgroups/eval-group/attachments"
-  
-  ```
+- Refer **2** in the main architecture diagram
 
 - Create **Global SSL certificate** in GCP
 
@@ -568,43 +491,24 @@ Let us prepare the environment first even before creating the GKE cluster
   gcloud compute ssl-certificates create cloud-lb-cert --certificate=<cert-name>.pem \
   --private-key=<private-key>.pem
   ```
-
+  
 - Setup **Environment** variables
 
   ```bash
-  NEG_NAME="apigee-lb-neg"
-  TARGET_SERVICE="<service-attachment field value from above section>"
+  NEG_NAME="gke-psc-neg"
   RUNTIME_LOCATION="$REGION"
   ANALYTICS_REGION="$REGION"
   NETWORK_NAME="$VPC_NAME"
   SUBNET_NAME="$PSC_SUBNET_NAME"
   PROJECT_ID="$PROJECT_NAME"
-  ADDRESS_NAME="apigee-lb-address"
-  BACKEND_SERVICE_NAME="apigee-bkend-service"
-  URL_MAP_NAME="apigee-bkend-url-map"
-  PROXY_NAME="apigee-bkend-proxy"
-  FWD_RULE="apigee-fwd-rule"
+  ADDRESS_NAME="gke-glb-address"
+  BACKEND_SERVICE_NAME="gke-bkend-service"
+  URL_MAP_NAME="gke-bkend-url-map"
+  PROXY_NAME="gke-bkend-proxy"
+  FWD_RULE="gke-fwd-rule"
   CERTIFICATE="cloud-lb-cert"
   ```
-
-- Create **Network Endpoint Group** (NEG)
-
-  ```bash
-  #Refer 2a in the main architecture diagram
-  gcloud compute network-endpoint-groups create $NEG_NAME \
-    --network-endpoint-type=private-service-connect \
-    --psc-target-service=$TARGET_SERVICE \
-    --region=$RUNTIME_LOCATION \
-    --network=$NETWORK_NAME \
-    --subnet=$SUBNET_NAME \
-    --project=$PROJECT_NAME
-  ```
-
-  > **NOTE**
-  >
-  > - **--network-endpoint-type** - Type of NEG is Private Service Connect
-  > - **--psc-target-service** - This points to the Service Attachment exposed from the Apigee instance
-
+  
 - Create a **Global External HTTP(S) LB**
 
   ```bash
@@ -652,38 +556,14 @@ Let us prepare the environment first even before creating the GKE cluster
    https://apacheapp.<dns-name>.com/apache
    https://apacheapp.<dns-name>.com/nginx
   ```
-  
-- Additional observations through Apigee UI
-
-  - **Performance**
-
-  ![apigee-proxy-perf1](./Assets/apigee-proxy-perf1.png)
-
-  ![apigee-proxy-perf2](./Assets/apigee-proxy-perf2.png)
-
-  
-
-  - **Latency**
-
-  ![apigee-proxy-latency1](./Assets/apigee-proxy-latency1.png)
-  
-  ![apigee-proxy-latency1](./Assets/apigee-proxy-latency2.png)
-  
-  - **Timeline**
-  
-    ![apigee-proxy-timeline1](./Assets/apigee-proxy-timeline1.png)
-  
-    ![apigee-proxy-timeline1](./Assets/apigee-proxy-timeline2.png)
-  
-  
-  
 
 ### Conclusion
 
-This document tried to depict how micro-service backends residing within a GKE cluster can be exposed to the consumers in a Secure way through an API Gateway viz. Apigee
+This document tried to depict how micro-service backends residing within a GKE cluster can be exposed to the consumers in a Secure way through Private Service Connect NEG
 
 ## References
 
 - [Source Code](https://github.com/monojit18/GCPWorkshop.git) at Github
 - [GKE Regional cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-a-regional-cluster#gcloud-init)
-- [Apigee X](https://cloud.google.com/apigee/docs/api-platform/get-started/install-cli-eval)
+- [Private Service Connect](https://cloud.google.com/vpc/docs/private-service-connect)
+- [Private Service Connect endpoints with consumer HTTP(S) controls](https://cloud.google.com/vpc/docs/private-service-connect-backends)
