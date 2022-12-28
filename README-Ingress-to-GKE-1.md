@@ -524,6 +524,9 @@ Let us prepare the environment first even before creating the GKE cluster
   - Test the services through Apigee endpoint
 
     ```bash
+    #Connect to the Jump server VM from local machine or cloud shell
+    gcloud compute ssh --zone $ZONE jumper-server --project=$PROJECT_NAME
+    
     AUTH="Authorization: Bearer $(gcloud auth print-access-token)"
     
     ENV_GROUP_HOSTNAME=$(curl -H "$AUTH" https://apigee.googleapis.com/v1/organizations/$PROJECT_NAME	/envgroups -s | jq -r '.environmentGroups[0].hostnames[0]')
@@ -538,7 +541,7 @@ Let us prepare the environment first even before creating the GKE cluster
     curl -i -k -H "Host: $ENV_GROUP_HOSTNAME" https://$INTERNAL_LOAD_BALANCER_IP/apache
     curl -i -k -H "Host: $ENV_GROUP_HOSTNAME" https://$INTERNAL_LOAD_BALANCER_IP/nginx
     ```
-
+    
     > **NOTE**
     >
     > - This document does SSL OffLoading at the Apigee X. [Refer](https://cloud.google.com/apigee/docs/api-platform/system-administration/options-configuring-tls)
@@ -549,8 +552,9 @@ Let us prepare the environment first even before creating the GKE cluster
 
 - Retrieve **Service Attachment** of the Apigee endpoint
 
+  - Refer **2b** in the main architecture diagram
+
   ```bash
-  #Refer 2b in the main architecture diagram
   #Option1: Following lists all the organizations and their details.Find the value of the field named - service-attachment
   gcloud alpha apigee organizations list
   
@@ -587,8 +591,9 @@ Let us prepare the environment first even before creating the GKE cluster
 
 - Create **Network Endpoint Group** (NEG)
 
+  - Refer **2a** in the main architecture diagram
+
   ```bash
-  #Refer 2a in the main architecture diagram
   gcloud compute network-endpoint-groups create $NEG_NAME \
     --network-endpoint-type=private-service-connect \
     --psc-target-service=$TARGET_SERVICE \
@@ -639,7 +644,7 @@ Let us prepare the environment first even before creating the GKE cluster
     --ports=443 \
     --global --project=$PROJECT_NAME
   ```
-  
+
 - Test service endpoints end to end
 
   ```bash
@@ -650,7 +655,7 @@ Let us prepare the environment first even before creating the GKE cluster
    https://apacheapp.<dns-name>.com/apache
    https://apacheapp.<dns-name>.com/nginx
   ```
-  
+
 - Additional observations through Apigee UI
 
   - **Performance**
@@ -664,17 +669,17 @@ Let us prepare the environment first even before creating the GKE cluster
   - **Latency**
 
   ![apigee-proxy-latency1](./Assets/apigee-proxy-latency1.png)
-  
+
   ![apigee-proxy-latency1](./Assets/apigee-proxy-latency2.png)
-  
+
   - **Timeline**
-  
+
     ![apigee-proxy-timeline1](./Assets/apigee-proxy-timeline1.png)
-  
+
     ![apigee-proxy-timeline1](./Assets/apigee-proxy-timeline2.png)
+
   
-  
-  
+
 
 ### Conclusion
 
