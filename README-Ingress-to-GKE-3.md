@@ -174,7 +174,7 @@ Let us prepare the environment first even before creating the GKE cluster
   
   #External IP of Jump Server VM
   gcloud compute instances describe jumper-server \
-  --format="get(networkInterfaces[0].accessConfigs[0].natIP)" --project=$PROJECT_SPOKE
+  --format="get(networkInterfaces[0].accessConfigs[0].natIP)" --project=$PROJECT_NAME
   ```
   
 - Configure **Jump Server VM**
@@ -226,7 +226,7 @@ Let us prepare the environment first even before creating the GKE cluster
   --master-authorized-networks=$JUMPSERERIP/32 --master-ipv4-cidr=10.0.6.0/28
   ```
 
-  > __NOTE__
+  > **NOTE**
   >
   > - **--master-authorized-networks** - Defines the CIDR ranges from which only the cluster can be accessed. **$JUMPSERERIP/32** ensures that only the Jump Server VM can access the private GKE cluster
   > - **--master-ipv4-cidr** - Defines the CIDR range for the Master Nodes for the private GKE cluster
